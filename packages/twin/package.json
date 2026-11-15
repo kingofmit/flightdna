@@ -1,0 +1,53 @@
+{
+  "name": "@flightdna/twin",
+  "version": "0.1.0",
+  "description": "Aircraft digital twin with Kalman filter state estimation, health monitoring, and anomaly detection for FlightDNA.",
+  "license": "MIT",
+  "author": "Ahmed Allem",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@flightdna/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingofmit/flightdna.git",
+    "directory": "packages/twin"
+  },
+  "keywords": [
+    "flightdna",
+    "digital-twin",
+    "kalman-filter",
+    "state-estimation",
+    "anomaly-detection",
+    "predictive-maintenance",
+    "aviation",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

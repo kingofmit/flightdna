@@ -1,0 +1,49 @@
+{
+  "name": "@flightdna/core",
+  "version": "0.1.0",
+  "description": "Core types, event emitter, and pipeline orchestrator for FlightDNA aircraft digital twin framework.",
+  "license": "MIT",
+  "author": "Ahmed Allem",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingofmit/flightdna.git",
+    "directory": "packages/core"
+  },
+  "keywords": [
+    "flightdna",
+    "aviation",
+    "aircraft",
+    "digital-twin",
+    "adsb",
+    "flight-data",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

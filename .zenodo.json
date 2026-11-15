@@ -1,0 +1,42 @@
+{
+  "title": "FlightDNA: Open Framework for Aircraft Digital Twins",
+  "description": "Open framework for aircraft digital twins — real-time performance monitoring, predictive maintenance, and fleet analytics using public ADS-B data. Built with TypeScript and organized as a Turborepo monorepo with 7 packages.",
+  "upload_type": "software",
+  "creators": [
+    {
+      "name": "Allem, Ahmed",
+      "orcid": "0009-0003-4937-5858"
+    }
+  ],
+  "license": "MIT",
+  "keywords": [
+    "aviation",
+    "digital-twin",
+    "adsb",
+    "aircraft-performance",
+    "flight-data",
+    "predictive-maintenance",
+    "typescript",
+    "turborepo"
+  ],
+  "related_identifiers": [
+    {
+      "identifier": "https://github.com/kingofmit/flightdna",
+      "relation": "isSupplementTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://github.com/kingofmit/allem-ui",
+      "relation": "isRelatedTo",
+      "resource_type": "software",
+      "scheme": "url"
+    },
+    {
+      "identifier": "https://github.com/kingofmit/allem-sdk",
+      "relation": "isRelatedTo",
+      "resource_type": "software",
+      "scheme": "url"
+    }
+  ]
+}

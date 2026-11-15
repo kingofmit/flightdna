@@ -1,0 +1,53 @@
+{
+  "name": "@flightdna/fleet",
+  "version": "0.1.0",
+  "description": "Fleet management, comparative analytics, and route analysis for FlightDNA.",
+  "license": "MIT",
+  "author": "Ahmed Allem",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@flightdna/core": "workspace:*",
+    "@flightdna/twin": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingofmit/flightdna.git",
+    "directory": "packages/fleet"
+  },
+  "keywords": [
+    "flightdna",
+    "fleet-management",
+    "fleet-analytics",
+    "aviation",
+    "aircraft-comparison",
+    "route-analysis",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

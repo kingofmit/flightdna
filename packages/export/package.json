@@ -1,0 +1,53 @@
+{
+  "name": "@flightdna/export",
+  "version": "0.1.0",
+  "description": "Export flight data to CSV, JSON, Parquet formats and generate flight reports for FlightDNA.",
+  "license": "MIT",
+  "author": "Ahmed Allem",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@flightdna/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingofmit/flightdna.git",
+    "directory": "packages/export"
+  },
+  "keywords": [
+    "flightdna",
+    "export",
+    "csv",
+    "json",
+    "parquet",
+    "flight-data-recorder",
+    "aviation",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}

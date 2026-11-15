@@ -1,0 +1,53 @@
+{
+  "name": "@flightdna/dynamics",
+  "version": "0.1.0",
+  "description": "6-DOF flight dynamics model, aerodynamic coefficient estimation, and performance metrics for FlightDNA.",
+  "license": "MIT",
+  "author": "Ahmed Allem",
+  "main": "./dist/index.js",
+  "module": "./dist/index.mjs",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.mjs",
+      "require": "./dist/index.js"
+    }
+  },
+  "files": [
+    "dist"
+  ],
+  "sideEffects": false,
+  "scripts": {
+    "build": "tsup",
+    "dev": "tsup --watch",
+    "clean": "rm -rf dist",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@flightdna/core": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "typescript": "^5.8.0",
+    "vitest": "^3.0.0"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kingofmit/flightdna.git",
+    "directory": "packages/dynamics"
+  },
+  "keywords": [
+    "flightdna",
+    "flight-dynamics",
+    "aerodynamics",
+    "drag-polar",
+    "performance",
+    "6dof",
+    "aviation",
+    "typescript"
+  ],
+  "publishConfig": {
+    "access": "public"
+  }
+}
