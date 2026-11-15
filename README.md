@@ -1,107 +1,172 @@
-<p align="center">
-  <img src=".github/FlightDNA.png" alt="FlightDNA" />
-</p>
+# FlightDNA
 
-<p align="center">
-  <a href="https://www.npmjs.com/package/@flightdna/core"><img src="https://img.shields.io/npm/v/@flightdna/core.svg" alt="npm version" /></a>
-  <a href="./LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/typescript-strict-blue" alt="TypeScript" />
-  <img src="https://img.shields.io/badge/node-%3E%3D20-brightgreen" alt="Node.js" />
-</p>
+**Open framework for aircraft digital twins using public ADS-B surveillance data.**
 
-Open framework for aircraft digital twins — real-time performance monitoring, predictive maintenance, and fleet analytics using public ADS-B data.
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24243285.svg)](https://doi.org/10.5281/zenodo.24243285)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
+[![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
 
-## Packages
+FlightDNA reconstructs real-time aircraft performance from publicly available ADS-B data. It combines Mode S message decoding, atmospheric modeling, flight dynamics, and Kalman-filtered state estimation into a unified digital twin framework — something no other open-source tool provides.
 
-| Package | Description | npm |
-|---------|-------------|-----|
-| `@flightdna/core` | Core types, event emitter, and pipeline orchestrator | [![npm](https://img.shields.io/npm/v/@flightdna/core.svg)](https://www.npmjs.com/package/@flightdna/core) |
-| `@flightdna/adsb` | ADS-B message decoder and OpenSky Network API client | [![npm](https://img.shields.io/npm/v/@flightdna/adsb.svg)](https://www.npmjs.com/package/@flightdna/adsb) |
-| `@flightdna/weather` | NOAA weather client and atmospheric model (ISA, wind, density) | [![npm](https://img.shields.io/npm/v/@flightdna/weather.svg)](https://www.npmjs.com/package/@flightdna/weather) |
-| `@flightdna/dynamics` | 6-DOF flight dynamics, drag polar estimation, performance metrics | [![npm](https://img.shields.io/npm/v/@flightdna/dynamics.svg)](https://www.npmjs.com/package/@flightdna/dynamics) |
-| `@flightdna/twin` | Digital twin with Kalman filter, health monitoring, anomaly detection | [![npm](https://img.shields.io/npm/v/@flightdna/twin.svg)](https://www.npmjs.com/package/@flightdna/twin) |
-| `@flightdna/fleet` | Fleet management, comparative analytics, route analysis | [![npm](https://img.shields.io/npm/v/@flightdna/fleet.svg)](https://www.npmjs.com/package/@flightdna/fleet) |
-| `@flightdna/export` | Export to CSV, JSON, Parquet and generate flight reports | [![npm](https://img.shields.io/npm/v/@flightdna/export.svg)](https://www.npmjs.com/package/@flightdna/export) |
+## What Makes FlightDNA Different
+
+| Feature | pyModeS | traffic | OpenAP | FlightDNA |
+|---------|:-------:|:-------:|:------:|:---------:|
+| ADS-B Decoding | ✓ | — | — | ✓ |
+| Trajectory Analysis | — | ✓ | — | ✓ |
+| Performance Model | — | — | ✓ | ✓ |
+| Real-time Digital Twin | — | — | — | ✓ |
+| Weather Integration | — | — | — | ✓ |
+| Anomaly Detection | — | — | — | ✓ |
+| Fleet Analytics | — | — | — | ✓ |
+| TypeScript / Browser | — | — | — | ✓ |
 
 ## Quick Start
+
+### Installation
 
 ```bash
 npm install @flightdna/core @flightdna/adsb @flightdna/twin
 ```
 
-```ts
-import { FlightDNA } from "@flightdna/core";
+### Track an Aircraft
+
+```typescript
 import { OpenSkyClient } from "@flightdna/adsb";
 import { DigitalTwin } from "@flightdna/twin";
 
-// Create an OpenSky client for live ADS-B data
-const opensky = new OpenSkyClient();
+const client = new OpenSkyClient();
+const twin = new DigitalTwin({ icao24: "a835af" });
 
-// Track a specific aircraft by ICAO24 address
-const states = await opensky.getStates({ icao24: ["a1b2c3"] });
+const states = await client.getStates({ icao24: ["a835af"] });
+if (states.length > 0) {
+  twin.update(states[0]);
 
-// Create a digital twin for the aircraft
-const twin = new DigitalTwin({ icao24: "a1b2c3" });
-
-// Feed ADS-B states into the twin
-for (const state of states) {
-  twin.update(state);
+  const state = twin.getState();
+  console.log(`Position: ${state.position.latitude}, ${state.position.longitude}`);
+  console.log(`Altitude: ${Math.round(state.position.altitude * 3.28084)} ft`);
+  console.log(`Speed: ${Math.round(state.velocity.groundSpeed * 1.94384)} kts`);
+  console.log(`Phase: ${state.flightPhase}`);
+  console.log(`Health: ${((state.health.find(h => h.type === "overall")?.value ?? 1) * 100).toFixed(0)}%`);
 }
+```
 
-// Get current estimated state and health indicators
-const twinState = twin.getState();
-console.log(twinState.position);       // { lat, lon, altitude }
-console.log(twinState.performance);    // { mach, climbRate, fuelFlow }
-console.log(twinState.health);         // { engineHealth, fatigueIndex }
+### Full Pipeline
+
+```typescript
+import { FlightDNA } from "@flightdna/core";
+import { OpenSkyClient } from "@flightdna/adsb";
+import { FleetManager } from "@flightdna/fleet";
+
+const adsb = new OpenSkyClient();
+const fleet = new FleetManager("my-fleet");
+
+const dna = new FlightDNA({
+  updateInterval: 15_000,
+  autoTrack: true,
+  pipeline: {
+    fetch: (tracked) => adsb.getStates({ icao24: tracked }),
+    updateTwin: (icao24, state) => fleet.update(state),
+  },
+});
+
+dna.on("stateUpdate", (state) => {
+  console.log(`${state.aircraft.icao24}: ${state.position.altitude}m`);
+});
+
+dna.on("anomaly", (anomaly) => {
+  console.log(`ANOMALY: ${anomaly.message}`);
+});
+
+dna.start();
+```
+
+### Drag Polar Estimation
+
+```typescript
+import { DragPolarEstimator } from "@flightdna/dynamics";
+
+const estimator = new DragPolarEstimator();
+
+// Feed observed CL/CD pairs from trajectory analysis
+estimator.addObservation({ cl: 0.45, cd: 0.0325, mach: 0.78 });
+estimator.addObservation({ cl: 0.50, cd: 0.0345, mach: 0.78 });
+estimator.addObservation({ cl: 0.55, cd: 0.0372, mach: 0.78 });
+// ... more observations
+
+const polar = estimator.estimate(9.4); // aspect ratio
+if (polar) {
+  console.log(`CD0: ${polar.cd0.toFixed(4)}`);
+  console.log(`k: ${polar.k.toFixed(4)}`);
+  console.log(`Oswald efficiency: ${polar.oswald.toFixed(3)}`);
+  console.log(`Max L/D: ${estimator.maxLiftToDrag(polar).toFixed(1)}`);
+}
+```
+
+### CLI
+
+```bash
+# Track an aircraft in real-time
+npx @flightdna/cli track a835af
+
+# Analyze historical flight data
+npx @flightdna/cli analyze flight.csv --output result.geojson --format geojson
+
+# Snapshot all aircraft in a region
+npx @flightdna/cli snapshot --bounds 45,55,-5,15
 ```
 
 ## Architecture
 
-FlightDNA processes aircraft data through a modular pipeline:
-
 ```
-ADS-B Surveillance Data (OpenSky Network)
-    |
-    v
-[@flightdna/adsb] Decode Mode S / ADS-B messages
-    |
-    v
-[@flightdna/weather] Enrich with atmospheric conditions (NOAA)
-    |
-    v
-[@flightdna/dynamics] Flight dynamics model (forces, coefficients)
-    |
-    v
-[@flightdna/twin] Digital twin state estimation (Kalman filter)
-    |
-    v
-[@flightdna/fleet] Fleet-wide analytics and comparison
-    |
-    v
-[@flightdna/export] Reports, CSV, JSON, Parquet
+Raw ADS-B Data ──► Decode ──► Weather Enrich ──► Dynamics ──► Kalman Filter ──► Digital Twin
+                   (CRC-24)    (ISA + METAR)      (3-DOF)     (8-state EKF)        │
+                                                                                    ▼
+                                                                     Health Monitoring
+                                                                     Anomaly Detection
+                                                                     Flight Phase ID
+                                                                            │
+                                                                            ▼
+                                                              Fleet Analytics ──► Export
+                                                                         (CSV/JSON/GeoJSON/FDR)
 ```
 
-Each package is independently usable. You can use `@flightdna/adsb` alone to decode ADS-B data, or `@flightdna/dynamics` standalone for flight dynamics calculations.
+Each package is independently usable. Use `@flightdna/adsb` alone for ADS-B decoding, or `@flightdna/dynamics` standalone for flight dynamics calculations.
 
-## Tech Stack
+## Packages
 
-- [TypeScript](https://www.typescriptlang.org/) (strict mode)
-- [Turborepo](https://turbo.build/) + [pnpm](https://pnpm.io/) workspaces
-- [tsup](https://tsup.egoist.dev/) (ESM + CJS builds)
-- [Vitest](https://vitest.dev/) for testing
-- [Changesets](https://github.com/changesets/changesets) for versioning
+| Package | Description |
+|---------|-------------|
+| [`@flightdna/core`](packages/core) | Event bus, types, pipeline orchestrator |
+| [`@flightdna/adsb`](packages/adsb) | Mode S decoder with CRC-24, OpenSky API client, CPR position decoding |
+| [`@flightdna/weather`](packages/weather) | ISA atmosphere (ICAO Doc 7488), NOAA METAR client, atmospheric blending |
+| [`@flightdna/dynamics`](packages/dynamics) | Point-mass 3-DOF with RK4, drag polar estimation, 50-type aircraft database |
+| [`@flightdna/twin`](packages/twin) | Extended Kalman filter (8-state coordinated turn), health monitoring, anomaly detection, flight phase |
+| [`@flightdna/fleet`](packages/fleet) | Fleet management, comparative analytics |
+| [`@flightdna/export`](packages/export) | CSV, JSON, GeoJSON, FDR export, flight reporting |
+
+## Key Algorithms
+
+### Extended Kalman Filter
+8-state coordinated-turn model: `[lat, lon, alt, vN, vE, vD, heading, turnRate]`. Handles straight flight and turns in one motion model. Joseph-form covariance update for numerical stability. Innovation-based adaptive process noise.
+
+### Drag Polar Estimation
+Estimates `CD = CD₀ + k·CL²` from observed trajectory data using ordinary least squares regression. Derives Oswald efficiency factor, maximum L/D ratio, and minimum drag speed — all from free public ADS-B data.
+
+### ADS-B Decoding
+Full Mode S decoder: DF17/18 with CRC-24 validation (polynomial `0xFFF409`), CPR global position decoding with 10-second TTL per ICAO Annex 10 Vol IV, velocity decomposition from EW/NS components.
+
+### ISA Atmosphere
+ICAO Doc 7488 standard atmosphere (troposphere + stratosphere) with Sutherland viscosity. Blended with real METAR observations from nearest station within 200 km.
+
+### Point-Mass Dynamics
+3-DOF flight dynamics with 4th-order Runge-Kutta integration. Body-to-NED coordinate transformation. Breguet range equation, specific excess power, Carson's speed.
 
 ## Data Sources
 
-- **[OpenSky Network](https://opensky-network.org/)** — Live and historical ADS-B surveillance data
-- **[NOAA](https://www.noaa.gov/)** — METAR, TAF, and upper air sounding weather data
-- **Public aircraft databases** — Aircraft type, registration, and operator information
-
-## Research
-
-FlightDNA is designed as a research tool for aircraft performance analysis using publicly available surveillance data. A paper describing the framework is planned for submission to the [Journal of Open Source Software (JOSS)](https://joss.theoj.org/).
-
-If you use FlightDNA in your research, please cite the Zenodo archive (DOI will be available after first release).
+- **[OpenSky Network](https://opensky-network.org)** — Free real-time and historical ADS-B surveillance data
+- **[NOAA Aviation Weather Center](https://aviationweather.gov)** — METAR observations and TAF forecasts
 
 ## Development
 
@@ -110,11 +175,27 @@ git clone https://github.com/kingofmit/flightdna.git
 cd flightdna
 pnpm install
 pnpm build
-pnpm test
+pnpm test    # 129+ tests across 7 packages
 ```
 
-See [CONTRIBUTING.md](./CONTRIBUTING.md) for more details.
+## Citation
+
+If you use FlightDNA in academic work, please cite:
+
+```bibtex
+@article{allem2026flightdna,
+  title={{FlightDNA}: An Open Framework for Aircraft Digital Twins
+         Using Public {ADS-B} Surveillance Data},
+  author={Allem, Ahmed},
+  journal={Journal of Open Source Software},
+  year={2026}
+}
+```
+
+## Contributing
+
+Contributions welcome. See [CONTRIBUTING.md](CONTRIBUTING.md) for guidelines.
 
 ## License
 
-[MIT](./LICENSE) - [Ahmed Allem](https://kingallem.com)
+[MIT](LICENSE) — Ahmed Allem
