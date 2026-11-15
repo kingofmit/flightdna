@@ -1,3 +1,7 @@
+<p align="center">
+  <img src=".github/FlightDNA.png" alt="FlightDNA" />
+</p>
+
 # FlightDNA
 
 **Open framework for aircraft digital twins using public ADS-B surveillance data.**
