@@ -1,6 +1,6 @@
 {
   "name": "@flightdna/weather",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "NOAA weather client and atmospheric model for FlightDNA — METAR, TAF, ISA calculator, wind and density at altitude.",
   "license": "MIT",
   "author": "Ahmed Allem",
