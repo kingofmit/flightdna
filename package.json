@@ -21,11 +21,18 @@
     "clean": "turbo clean",
     "changeset": "changeset",
     "version-packages": "changeset version",
-    "release": "turbo build && changeset publish"
+    "release": "turbo build && changeset publish",
+    "docs": "typedoc",
+    "validate": "tsx scripts/validate.ts"
   },
   "devDependencies": {
     "@changesets/cli": "^2.27.0",
+    "@eslint/js": "^10.0.1",
+    "eslint": "^10.15.0",
+    "tsx": "^4.0.0",
     "turbo": "^2.4.0",
-    "typescript": "^5.8.0"
+    "typedoc": "^0.28.20",
+    "typescript": "^5.8.0",
+    "typescript-eslint": "^8.73.0"
   }
 }

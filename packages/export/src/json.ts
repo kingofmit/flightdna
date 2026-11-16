@@ -8,6 +8,15 @@ export class JSONExporter {
   private readonly prettyPrint: boolean;
   private readonly timestampFormat: "iso" | "unix" | "unix_ms";
 
+  /**
+   * JSON replacer that converts non-finite numbers (NaN, Infinity, -Infinity)
+   * to null so the output is valid JSON.
+   */
+  private static readonly safeReplacer = (_key: string, value: unknown): unknown => {
+    if (typeof value === "number" && !Number.isFinite(value)) return null;
+    return value;
+  };
+
   constructor(config: Partial<ExportConfig> = {}) {
     this.prettyPrint = config.prettyPrint ?? false;
     this.timestampFormat = config.timestampFormat ?? "iso";
@@ -18,7 +27,7 @@ export class JSONExporter {
    */
   export(states: FlightState[]): string {
     const data = states.map((state) => this.stateToRecord(state));
-    return JSON.stringify(data, null, this.prettyPrint ? 2 : undefined);
+    return JSON.stringify(data, JSONExporter.safeReplacer, this.prettyPrint ? 2 : undefined);
   }
 
   /**
@@ -52,7 +61,7 @@ export class JSONExporter {
       features,
     };
 
-    return JSON.stringify(collection, null, this.prettyPrint ? 2 : undefined);
+    return JSON.stringify(collection, JSONExporter.safeReplacer, this.prettyPrint ? 2 : undefined);
   }
 
   /**
@@ -60,7 +69,7 @@ export class JSONExporter {
    */
   exportTrajectory(states: FlightState[]): string {
     if (states.length === 0) {
-      return JSON.stringify({ type: "FeatureCollection", features: [] });
+      return JSON.stringify({ type: "FeatureCollection", features: [] }, JSONExporter.safeReplacer);
     }
 
     const coordinates = states.map((s) => [
@@ -86,7 +95,7 @@ export class JSONExporter {
 
     return JSON.stringify(
       { type: "FeatureCollection", features: [feature] },
-      null,
+      JSONExporter.safeReplacer,
       this.prettyPrint ? 2 : undefined,
     );
   }

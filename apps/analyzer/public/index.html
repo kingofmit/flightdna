@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>FlightDNA Analyzer</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4/dist/chart.umd.min.js"></script>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;background:#0f1117;color:#e0e0e6;min-height:100vh}
+  h1{font-size:1.6rem;font-weight:600}
+  h2{font-size:1.1rem;font-weight:600;margin-bottom:0.5rem;color:#8b9cf7}
+  .header{display:flex;align-items:center;gap:1rem;padding:1rem 2rem;background:#161822;border-bottom:1px solid #2a2d3e}
+  .header .logo{font-size:1.6rem;font-weight:700;background:linear-gradient(135deg,#6c8cff,#a855f7);-webkit-background-clip:text;-webkit-text-fill-color:transparent}
+  .header .sub{color:#9ca3af;font-size:0.85rem;margin-left:auto}
+  .container{max-width:1280px;margin:0 auto;padding:1.5rem}
+
+  /* Upload area */
+  .upload-zone{border:2px dashed #3a3f5c;border-radius:12px;padding:3rem;text-align:center;cursor:pointer;transition:border-color .2s,background .2s;margin-bottom:1.5rem}
+  .upload-zone:hover,.upload-zone.dragover{border-color:#6c8cff;background:#1a1d2e}
+  .upload-zone p{color:#9ca3af;margin-top:0.5rem;font-size:0.9rem}
+  .upload-zone .icon{font-size:2.5rem;margin-bottom:0.5rem}
+  .upload-zone input[type="file"]{display:none}
+  .upload-btn{display:inline-block;margin-top:1rem;padding:0.5rem 1.5rem;background:#6c8cff;color:#fff;border:none;border-radius:6px;cursor:pointer;font-size:0.9rem;font-weight:500}
+  .upload-btn:hover{background:#5a7aee}
+
+  /* Spinner */
+  .spinner-overlay{display:none;position:fixed;inset:0;background:rgba(15,17,23,.85);z-index:1000;justify-content:center;align-items:center;flex-direction:column;gap:1rem}
+  .spinner-overlay.active{display:flex}
+  .spinner{width:48px;height:48px;border:4px solid #2a2d3e;border-top-color:#6c8cff;border-radius:50%;animation:spin .8s linear infinite}
+  @keyframes spin{to{transform:rotate(360deg)}}
+
+  /* Results */
+  #results{display:none}
+  .grid{display:grid;gap:1rem}
+  .grid-2{grid-template-columns:1fr 1fr}
+  .grid-3{grid-template-columns:1fr 1fr 1fr}
+  .card{background:#161822;border:1px solid #2a2d3e;border-radius:10px;padding:1rem}
+  .card-full{grid-column:1/-1}
+  .stat{display:flex;flex-direction:column;gap:0.15rem}
+  .stat .label{font-size:0.75rem;color:#9ca3af;text-transform:uppercase;letter-spacing:0.05em}
+  .stat .value{font-size:1.2rem;font-weight:600;color:#fff}
+  .stats-row{display:flex;flex-wrap:wrap;gap:1.25rem}
+  .chart-box{position:relative;height:220px}
+  .chart-box.tall{height:280px}
+  #map{height:320px;border-radius:8px;margin-top:0.5rem}
+
+  /* Health indicators */
+  .health-bar{display:flex;align-items:center;gap:0.5rem;margin:0.3rem 0}
+  .health-bar .bar-track{flex:1;height:8px;background:#2a2d3e;border-radius:4px;overflow:hidden}
+  .health-bar .bar-fill{height:100%;border-radius:4px;transition:width .3s}
+  .health-bar .bar-label{font-size:0.8rem;color:#9ca3af;min-width:140px}
+  .health-bar .bar-val{font-size:0.8rem;color:#e0e0e6;min-width:40px;text-align:right}
+
+  /* Anomalies table */
+  .anomaly-table{width:100%;border-collapse:collapse;font-size:0.85rem;margin-top:0.5rem}
+  .anomaly-table th{text-align:left;padding:0.4rem 0.5rem;border-bottom:1px solid #2a2d3e;color:#9ca3af;font-weight:500}
+  .anomaly-table td{padding:0.4rem 0.5rem;border-bottom:1px solid #1e2030}
+  .badge{display:inline-block;padding:0.1rem 0.5rem;border-radius:4px;font-size:0.75rem;font-weight:600}
+  .badge.info{background:#1e3a5f;color:#60a5fa}
+  .badge.warning{background:#5f3a1e;color:#fbbf24}
+  .badge.critical{background:#5f1e1e;color:#f87171}
+  .no-data{color:#6b7280;font-style:italic;padding:1rem 0}
+
+  @media(max-width:800px){.grid-2,.grid-3{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="header">
+  <span class="logo">FlightDNA</span>
+  <h1>Historical Flight Analyzer</h1>
+  <span class="sub">Upload a CSV to analyze</span>
+</div>
+
+<div class="container">
+  <div class="upload-zone" id="dropZone">
+    <div class="icon">&#9992;</div>
+    <strong>Drop a flight CSV here</strong>
+    <p>Or click to select a file. Accepts ADS-B CSV exports (OpenSky, ADS-B Exchange, etc.)</p>
+    <button class="upload-btn" id="browseBtn">Browse files</button>
+    <input type="file" id="fileInput" accept=".csv,.tsv,.txt">
+  </div>
+
+  <div class="spinner-overlay" id="spinner">
+    <div class="spinner"></div>
+    <div>Analyzing flight data...</div>
+  </div>
+
+  <div id="error" style="display:none;padding:1rem;background:#3b1111;border:1px solid #7f1d1d;border-radius:8px;margin-bottom:1rem;color:#fca5a5"></div>
+
+  <div id="results">
+    <!-- Summary -->
+    <div class="card card-full" style="margin-bottom:1rem">
+      <h2>Flight Summary</h2>
+      <div class="stats-row" id="summaryStats"></div>
+    </div>
+
+    <!-- Map -->
+    <div class="card card-full" style="margin-bottom:1rem">
+      <h2>Flight Trajectory</h2>
+      <div id="map"></div>
+    </div>
+
+    <!-- Charts -->
+    <div class="grid grid-2" style="margin-bottom:1rem">
+      <div class="card"><h2>Altitude Profile</h2><div class="chart-box"><canvas id="chartAlt"></canvas></div></div>
+      <div class="card"><h2>Speed Profile</h2><div class="chart-box"><canvas id="chartSpeed"></canvas></div></div>
+      <div class="card"><h2>Vertical Rate</h2><div class="chart-box"><canvas id="chartVR"></canvas></div></div>
+      <div class="card"><h2>Phase Breakdown</h2><div class="chart-box"><canvas id="chartPhase"></canvas></div></div>
+    </div>
+
+    <!-- Drag polar -->
+    <div class="grid grid-2" style="margin-bottom:1rem">
+      <div class="card" id="dragPolarCard">
+        <h2>Drag Polar Estimate</h2>
+        <div id="dragPolarInfo" class="stats-row" style="margin-bottom:0.5rem"></div>
+        <div class="chart-box tall"><canvas id="chartDrag"></canvas></div>
+      </div>
+      <div class="card">
+        <h2>Twin Health Indicators</h2>
+        <div id="healthBars"></div>
+        <h2 style="margin-top:1rem">Twin State</h2>
+        <div class="stats-row" id="twinStats"></div>
+      </div>
+    </div>
+
+    <!-- Anomalies -->
+    <div class="card card-full">
+      <h2>Detected Anomalies</h2>
+      <div id="anomaliesBody"></div>
+    </div>
+  </div>
+</div>
+
+<script>
+const dropZone = document.getElementById('dropZone');
+const fileInput = document.getElementById('fileInput');
+const browseBtn = document.getElementById('browseBtn');
+const spinner = document.getElementById('spinner');
+const errorDiv = document.getElementById('error');
+const resultsDiv = document.getElementById('results');
+
+let charts = [];
+let leafletMap = null;
+
+browseBtn.addEventListener('click', (e) => { e.stopPropagation(); fileInput.click(); });
+dropZone.addEventListener('click', () => fileInput.click());
+dropZone.addEventListener('dragover', (e) => { e.preventDefault(); dropZone.classList.add('dragover'); });
+dropZone.addEventListener('dragleave', () => dropZone.classList.remove('dragover'));
+dropZone.addEventListener('drop', (e) => {
+  e.preventDefault(); dropZone.classList.remove('dragover');
+  if (e.dataTransfer.files.length) uploadFile(e.dataTransfer.files[0]);
+});
+fileInput.addEventListener('change', () => { if (fileInput.files.length) uploadFile(fileInput.files[0]); });
+
+async function uploadFile(file) {
+  errorDiv.style.display = 'none';
+  spinner.classList.add('active');
+  resultsDiv.style.display = 'none';
+  charts.forEach(c => c.destroy()); charts = [];
+
+  const form = new FormData();
+  form.append('file', file);
+
+  try {
+    const res = await fetch('/api/analyze', { method: 'POST', body: form });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || 'Analysis failed');
+    renderResults(data);
+  } catch (err) {
+    errorDiv.textContent = err.message;
+    errorDiv.style.display = 'block';
+  } finally {
+    spinner.classList.remove('active');
+  }
+}
+
+function fmt(n, dec=1) { return n != null ? Number(n).toFixed(dec) : '--'; }
+function fmtDuration(s) {
+  const h = Math.floor(s/3600), m = Math.floor((s%3600)/60), sec = Math.floor(s%60);
+  return h > 0 ? `${h}h ${m}m ${sec}s` : m > 0 ? `${m}m ${sec}s` : `${sec}s`;
+}
+function mToFt(m) { return m * 3.28084; }
+function msToKts(ms) { return ms * 1.94384; }
+
+function makeStat(label, value) {
+  const d = document.createElement('div'); d.className = 'stat';
+  d.innerHTML = `<span class="label">${label}</span><span class="value">${value}</span>`;
+  return d;
+}
+
+function renderResults(data) {
+  resultsDiv.style.display = 'block';
+  const s = data.summary;
+
+  // Summary stats
+  const ss = document.getElementById('summaryStats'); ss.innerHTML = '';
+  ss.appendChild(makeStat('Aircraft', `${s.icao24}${s.callsign ? ' / '+s.callsign : ''}`));
+  ss.appendChild(makeStat('Duration', fmtDuration(s.duration)));
+  ss.appendChild(makeStat('Data Points', s.dataPoints));
+  ss.appendChild(makeStat('Distance', `${fmt(s.totalDistance/1000)} km`));
+  ss.appendChild(makeStat('Max Altitude', `${fmt(mToFt(s.maxAltitude),0)} ft (${fmt(s.maxAltitude,0)} m)`));
+  ss.appendChild(makeStat('Max Speed', `${fmt(msToKts(s.maxGroundSpeed),0)} kts (${fmt(s.maxGroundSpeed,1)} m/s)`));
+  ss.appendChild(makeStat('Avg Speed', `${fmt(msToKts(s.avgGroundSpeed),0)} kts`));
+  ss.appendChild(makeStat('Max V/S', `${fmt(s.maxVerticalRate * 196.85, 0)} fpm`));
+
+  // Map
+  renderMap(data);
+
+  // Time profiles
+  const perf = data.performance;
+  const t0 = perf.altitudeProfile[0]?.[0] ?? 0;
+  const labels = perf.altitudeProfile.map(p => ((p[0]-t0)/60).toFixed(1));
+
+  renderChart('chartAlt', 'line', labels, [{
+    label: 'Altitude (ft)', data: perf.altitudeProfile.map(p => mToFt(p[1])),
+    borderColor: '#6c8cff', backgroundColor: 'rgba(108,140,255,.15)', fill: true, pointRadius: 0, borderWidth: 1.5
+  }], 'Time (min)', 'Altitude (ft)');
+
+  renderChart('chartSpeed', 'line', labels, [{
+    label: 'Ground Speed (kts)', data: perf.speedProfile.map(p => msToKts(p[1])),
+    borderColor: '#34d399', backgroundColor: 'rgba(52,211,153,.15)', fill: true, pointRadius: 0, borderWidth: 1.5
+  }], 'Time (min)', 'Speed (kts)');
+
+  renderChart('chartVR', 'line', labels, [{
+    label: 'Vertical Rate (fpm)', data: perf.verticalRateProfile.map(p => p[1]*196.85),
+    borderColor: '#f59e0b', backgroundColor: 'rgba(245,158,11,.12)', fill: true, pointRadius: 0, borderWidth: 1.5
+  }], 'Time (min)', 'V/S (fpm)');
+
+  // Phase pie
+  const pb = perf.phaseBreakdown;
+  renderChart('chartPhase', 'doughnut', null, [{
+    data: [pb.climb*100, pb.cruise*100, pb.descent*100, pb.ground*100],
+    backgroundColor: ['#6c8cff', '#34d399', '#f59e0b', '#6b7280'],
+  }], null, null, { labels: ['Climb', 'Cruise', 'Descent', 'Ground'] });
+
+  // Drag polar
+  const dp = data.dragPolar;
+  const dpCard = document.getElementById('dragPolarCard');
+  const dpInfo = document.getElementById('dragPolarInfo');
+  dpInfo.innerHTML = '';
+  if (dp) {
+    dpCard.style.display = '';
+    dpInfo.appendChild(makeStat('CD0', fmt(dp.cd0, 4)));
+    dpInfo.appendChild(makeStat('k', fmt(dp.k, 4)));
+    dpInfo.appendChild(makeStat('Oswald e', fmt(dp.oswald, 3)));
+    dpInfo.appendChild(makeStat('R\u00b2', fmt(dp.rSquared, 3)));
+
+    const obs = dp.observations || [];
+    const cl2 = obs.map(o => o.cl * o.cl);
+    const cds = obs.map(o => o.cd);
+    const minCL2 = 0, maxCL2 = Math.max(...cl2, 0.5);
+    const lineX = []; const lineY = [];
+    for (let x = minCL2; x <= maxCL2 * 1.1; x += maxCL2 / 50) { lineX.push(x.toFixed(4)); lineY.push(dp.cd0 + dp.k * x); }
+
+    renderChart('chartDrag', 'scatter', null, [
+      { label: 'Observations', data: cl2.map((x,i) => ({x, y: cds[i]})), backgroundColor: 'rgba(108,140,255,.5)', pointRadius: 3 },
+      { label: 'Fit: CD = '+fmt(dp.cd0,4)+' + '+fmt(dp.k,4)+'*CL\u00b2', data: lineX.map((x,i) => ({x:parseFloat(x), y:lineY[i]})),
+        type: 'line', borderColor: '#f87171', borderWidth: 2, pointRadius: 0, fill: false }
+    ], 'CL\u00b2', 'CD');
+  } else {
+    dpCard.style.opacity = '0.5';
+    dpInfo.innerHTML = '<div class="no-data">Not enough cruise data to estimate drag polar</div>';
+  }
+
+  // Health bars
+  const hb = document.getElementById('healthBars'); hb.innerHTML = '';
+  const healthItems = data.twinState.health || [];
+  if (healthItems.length === 0) hb.innerHTML = '<div class="no-data">No health data available</div>';
+  healthItems.forEach(h => {
+    const pct = (h.value * 100).toFixed(0);
+    const color = h.value > 0.7 ? '#34d399' : h.value > 0.4 ? '#f59e0b' : '#f87171';
+    hb.innerHTML += `<div class="health-bar"><span class="bar-label">${h.type.replace(/_/g,' ')}</span><div class="bar-track"><div class="bar-fill" style="width:${pct}%;background:${color}"></div></div><span class="bar-val">${pct}%</span></div>`;
+  });
+
+  // Twin stats
+  const ts = document.getElementById('twinStats'); ts.innerHTML = '';
+  const tw = data.twinState;
+  ts.appendChild(makeStat('Flight Phase', tw.flightPhase));
+  ts.appendChild(makeStat('Mach', fmt(tw.performance?.mach, 3)));
+  ts.appendChild(makeStat('Updates', tw.updateCount));
+  ts.appendChild(makeStat('Airborne', tw.airborne ? 'Yes' : 'No'));
+
+  // Anomalies
+  const ab = document.getElementById('anomaliesBody'); ab.innerHTML = '';
+  if (data.anomalies.length === 0) {
+    ab.innerHTML = '<div class="no-data">No anomalies detected</div>';
+  } else {
+    let html = '<table class="anomaly-table"><thead><tr><th>Severity</th><th>Type</th><th>Message</th><th>Deviation</th><th>Time</th></tr></thead><tbody>';
+    data.anomalies.forEach(a => {
+      html += `<tr><td><span class="badge ${a.severity}">${a.severity}</span></td><td>${a.type}</td><td>${a.message}</td><td>${fmt(a.deviation, 2)}&sigma;</td><td>${new Date(a.detectedAt).toISOString().slice(11,19)}</td></tr>`;
+    });
+    html += '</tbody></table>';
+    ab.innerHTML = html;
+  }
+
+  resultsDiv.scrollIntoView({ behavior: 'smooth' });
+}
+
+function renderMap(data) {
+  if (leafletMap) { leafletMap.remove(); leafletMap = null; }
+  const mapDiv = document.getElementById('map');
+  mapDiv.innerHTML = '';
+  leafletMap = L.map(mapDiv).setView([0, 0], 2);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; <a href="https://carto.com/">CARTO</a>',
+    maxZoom: 19,
+  }).addTo(leafletMap);
+
+  const s = data.summary;
+  if (s.startPosition) {
+    L.circleMarker([s.startPosition.latitude, s.startPosition.longitude], {radius:7, color:'#34d399', fillColor:'#34d399', fillOpacity:0.9})
+      .addTo(leafletMap).bindPopup('Departure');
+  }
+  if (s.endPosition) {
+    L.circleMarker([s.endPosition.latitude, s.endPosition.longitude], {radius:7, color:'#f87171', fillColor:'#f87171', fillOpacity:0.9})
+      .addTo(leafletMap).bindPopup('Arrival');
+  }
+  if (data.trajectory && data.trajectory.length > 1) {
+    const latlngs = data.trajectory.map(p => [p[0], p[1]]);
+    L.polyline(latlngs, { color: '#6c8cff', weight: 2.5, opacity: 0.8 }).addTo(leafletMap);
+    leafletMap.fitBounds(L.latLngBounds(latlngs).pad(0.15));
+  } else if (s.startPosition && s.endPosition) {
+    leafletMap.fitBounds(L.latLngBounds(
+      [s.startPosition.latitude, s.startPosition.longitude],
+      [s.endPosition.latitude, s.endPosition.longitude]
+    ).pad(0.3));
+  }
+}
+
+const chartDefaults = {
+  responsive: true, maintainAspectRatio: false,
+  plugins: { legend: { display: false, labels: { color: '#9ca3af', font: { size: 11 } } } },
+  scales: {
+    x: { ticks: { color: '#6b7280', maxTicksLimit: 8, font: { size: 10 } }, grid: { color: '#1e2030' } },
+    y: { ticks: { color: '#6b7280', font: { size: 10 } }, grid: { color: '#1e2030' } }
+  }
+};
+
+function renderChart(canvasId, type, labels, datasets, xLabel, yLabel, extra) {
+  const ctx = document.getElementById(canvasId).getContext('2d');
+  const cfg = {
+    type, data: { labels, datasets },
+    options: JSON.parse(JSON.stringify(chartDefaults))
+  };
+  if (type === 'doughnut') {
+    cfg.data.labels = extra?.labels;
+    cfg.options = { responsive: true, maintainAspectRatio: false, plugins: { legend: { display: true, position: 'right', labels: { color: '#e0e0e6', font: { size: 12 } } } } };
+  }
+  if (type === 'scatter') {
+    cfg.options.plugins.legend = { display: true, labels: { color: '#9ca3af', font: { size: 10 } } };
+    if (xLabel) cfg.options.scales.x.title = { display: true, text: xLabel, color: '#9ca3af' };
+    if (yLabel) cfg.options.scales.y.title = { display: true, text: yLabel, color: '#9ca3af' };
+  }
+  if (xLabel && type !== 'scatter' && type !== 'doughnut') {
+    cfg.options.scales.x.title = { display: true, text: xLabel, color: '#9ca3af' };
+  }
+  if (yLabel && type !== 'scatter' && type !== 'doughnut') {
+    cfg.options.scales.y.title = { display: true, text: yLabel, color: '#9ca3af' };
+  }
+  const chart = new Chart(ctx, cfg);
+  charts.push(chart);
+}
+</script>
+</body>
+</html>

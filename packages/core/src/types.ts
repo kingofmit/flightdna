@@ -138,6 +138,23 @@ export interface FlightDNAConfig {
   dynamics?: boolean;
   /** Enable digital twin state estimation (default: true) */
   twinEnabled?: boolean;
+
+  /** Pipeline hooks for connecting packages */
+  pipeline?: {
+    /** Called each tick to fetch latest states. Return states for tracked aircraft. */
+    fetch?: (trackedIcao24s: string[]) => Promise<FlightState[]>;
+    /** Called to enrich a state with weather/atmosphere data */
+    enrich?: (state: FlightState) => FlightState;
+    /** Called to update the digital twin for an aircraft */
+    updateTwin?: (icao24: string, state: FlightState) => void;
+  };
+
+  /** Auto-track: if true, automatically track any aircraft seen in fetched data */
+  autoTrack?: boolean;
+  /** Maximum tracked aircraft (prevents memory issues). Default: 5000 */
+  maxTracked?: number;
+  /** Inactivity timeout in ms — untrack aircraft with no updates. Default: 300000 (5 min) */
+  inactivityTimeout?: number;
 }
 
 /**
@@ -148,7 +165,8 @@ export type FlightDNAEvent =
   | "anomaly"
   | "trackStart"
   | "trackEnd"
-  | "error";
+  | "error"
+  | "stats";
 
 /**
  * Event payload map.
@@ -159,4 +177,5 @@ export interface FlightDNAEventMap {
   trackStart: { icao24: string; timestamp: number };
   trackEnd: { icao24: string; timestamp: number; reason: string };
   error: { message: string; code?: string };
+  stats: { tickCount: number; trackedCount: number; timestamp: number };
 }

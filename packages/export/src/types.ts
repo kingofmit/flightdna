@@ -1,7 +1,7 @@
 /**
  * Supported export formats.
  */
-export type ExportFormat = "csv" | "json" | "parquet" | "fdr";
+export type ExportFormat = "csv" | "json" | "jsonl" | "kml" | "parquet" | "fdr";
 
 /**
  * Export configuration.

@@ -37,8 +37,8 @@ export class PerformanceCalculator {
     const q = 0.5 * params.density * tas ** 2;
     const weight = this.config.mass * G;
 
-    // CL for level flight
-    const cl = weight / (q * this.config.wingArea);
+    // CL for level flight — guard against zero dynamic pressure
+    const cl = q > 0 ? weight / (q * this.config.wingArea) : 0;
 
     // CD from drag polar
     const cd =
@@ -66,14 +66,15 @@ export class PerformanceCalculator {
       fuelFlow = params.sfc * thrust;
       specificRange = fuelFlow > 0 ? tas / fuelFlow : undefined;
 
-      if (params.fuelMass && fuelFlow > 0) {
+      if (params.fuelMass && params.fuelMass > 0 && fuelFlow > 0) {
         // Breguet range equation (simplified, constant altitude/speed)
-        range =
-          (tas / (specificFuelConsumption * G)) *
-          liftToDrag *
-          Math.log(
-            this.config.mass / (this.config.mass - params.fuelMass),
-          );
+        const massRatio = this.config.mass / (this.config.mass - params.fuelMass);
+        if (massRatio > 0 && Number.isFinite(massRatio)) {
+          range =
+            (tas / (specificFuelConsumption * G)) *
+            liftToDrag *
+            Math.log(massRatio);
+        }
         endurance = params.fuelMass / fuelFlow;
       }
     }
@@ -102,9 +103,11 @@ export class PerformanceCalculator {
     dragPolar: DragPolar,
     speedOfSound: number = 295,
   ): number {
+    if (density <= 0 || dragPolar.k <= 0 || speedOfSound <= 0) return 0;
     const clMaxRange = Math.sqrt(
       dragPolar.cd0 / (3 * dragPolar.k),
     );
+    if (clMaxRange <= 0) return 0;
     const weight = this.config.mass * G;
     const q = weight / (this.config.wingArea * clMaxRange);
     const tas = Math.sqrt((2 * q) / density);
@@ -120,9 +123,11 @@ export class PerformanceCalculator {
     dragPolar: DragPolar,
     speedOfSound: number = 295,
   ): number {
+    if (density <= 0 || dragPolar.k <= 0 || speedOfSound <= 0) return 0;
     const clMaxEndurance = Math.sqrt(
       (3 * dragPolar.cd0) / dragPolar.k,
     );
+    if (clMaxEndurance <= 0) return 0;
     const weight = this.config.mass * G;
     const q = weight / (this.config.wingArea * clMaxEndurance);
     const tas = Math.sqrt((2 * q) / density);

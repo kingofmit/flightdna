@@ -22,12 +22,14 @@
     "build": "tsup",
     "dev": "tsup --watch",
     "clean": "rm -rf dist",
-    "test": "vitest run"
+    "test": "vitest run",
+    "lint": "eslint src"
   },
   "dependencies": {
     "@flightdna/core": "workspace:*"
   },
   "devDependencies": {
+    "@types/node": "^26.6.6",
     "tsup": "^8.4.0",
     "typescript": "^5.8.0",
     "vitest": "^3.0.0"

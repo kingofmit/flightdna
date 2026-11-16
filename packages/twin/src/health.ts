@@ -62,6 +62,8 @@ export class HealthMonitor {
    */
   reset(): void {
     this.history = [];
+    this.cumulativeCycles = 0;
+    this.lastAltDirection = 0;
     this.initializeIndicators();
   }
 
@@ -123,30 +125,40 @@ export class HealthMonitor {
   /**
    * Track structural fatigue accumulation.
    *
-   * Counts load cycles (significant altitude changes) as a proxy
-   * for fatigue damage accumulation.
+   * Counts load cycles (significant altitude reversals) as a proxy
+   * for fatigue damage accumulation. The cycle counter is cumulative
+   * rather than recomputed from the rolling window each update.
    */
+  private cumulativeCycles = 0;
+  private lastAltDirection: number = 0;
+
   private updateStructuralFatigue(state: FlightState): void {
     const indicator = this.indicators.get("structural_fatigue")!;
 
-    // Count altitude reversals as a proxy for load cycles
-    let cycles = 0;
-    if (this.history.length > 2) {
-      for (let i = 2; i < this.history.length; i++) {
-        const prev = this.history[i - 1].altitude - this.history[i - 2].altitude;
-        const curr = this.history[i].altitude - this.history[i - 1].altitude;
-        // Sign change in vertical rate indicates a load cycle
-        if (prev * curr < 0 && Math.abs(prev) > 50) {
-          cycles++;
+    if (this.history.length >= 2) {
+      const prev = this.history[this.history.length - 2];
+      const curr = this.history[this.history.length - 1];
+      const altChange = curr.altitude - prev.altitude;
+
+      // Detect altitude reversal (sign change with significant magnitude)
+      if (this.lastAltDirection !== 0 && altChange !== 0) {
+        const currentDir = Math.sign(altChange);
+        if (currentDir !== this.lastAltDirection && Math.abs(altChange) > 30) {
+          this.cumulativeCycles++;
         }
+      }
+
+      if (Math.abs(altChange) > 10) {
+        this.lastAltDirection = Math.sign(altChange);
       }
     }
 
-    // Normalize: assume 10000 cycles is end of healthy life
-    const fatigueIndex = Math.min(1, cycles / 10000);
+    // Normalize: typical flight has 2-10 major altitude reversals
+    // After ~100 tracked flights worth of cycles, start showing wear
+    const fatigueIndex = Math.min(1, this.cumulativeCycles / 500);
     indicator.value = 1 - fatigueIndex;
-    indicator.trend = -fatigueIndex / Math.max(1, this.history.length);
-    indicator.confidence = Math.min(1, this.history.length / 200);
+    indicator.trend = this.cumulativeCycles > 10 ? -fatigueIndex / this.cumulativeCycles : 0;
+    indicator.confidence = Math.min(1, this.cumulativeCycles / 20);
     indicator.timestamp = state.timestamp;
   }
 
@@ -215,6 +227,7 @@ export class HealthMonitor {
   }
 
   private mean(arr: number[]): number {
+    if (arr.length === 0) return 0;
     return arr.reduce((a, b) => a + b, 0) / arr.length;
   }
 }

@@ -61,8 +61,8 @@ export interface OpenSkyStateVector {
 export interface OpenSkyResponse {
   /** Unix timestamp of the response */
   time: number;
-  /** Array of state vectors */
-  states: OpenSkyStateVector[];
+  /** Array of state vectors — null when no aircraft match the query */
+  states: OpenSkyStateVector[] | null;
 }
 
 /**

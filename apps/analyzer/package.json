@@ -1,0 +1,24 @@
+{
+  "name": "@flightdna/analyzer",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Historical flight analyzer demo for FlightDNA",
+  "license": "MIT",
+  "scripts": {
+    "dev": "tsx src/server.ts",
+    "build": "tsup"
+  },
+  "dependencies": {
+    "@flightdna/core": "workspace:*",
+    "@flightdna/adsb": "workspace:*",
+    "@flightdna/weather": "workspace:*",
+    "@flightdna/dynamics": "workspace:*",
+    "@flightdna/twin": "workspace:*",
+    "@flightdna/export": "workspace:*"
+  },
+  "devDependencies": {
+    "tsup": "^8.4.0",
+    "tsx": "^4.0.0",
+    "typescript": "^5.8.0"
+  }
+}

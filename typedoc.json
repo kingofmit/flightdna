@@ -1,0 +1,18 @@
+{
+  "$schema": "https://typedoc.org/schema.json",
+  "entryPoints": [
+    "packages/core/src/index.ts",
+    "packages/adsb/src/index.ts",
+    "packages/weather/src/index.ts",
+    "packages/dynamics/src/index.ts",
+    "packages/twin/src/index.ts",
+    "packages/fleet/src/index.ts",
+    "packages/export/src/index.ts"
+  ],
+  "out": "docs",
+  "name": "FlightDNA API Documentation",
+  "readme": "README.md",
+  "excludePrivate": true,
+  "excludeInternal": true,
+  "skipErrorChecking": true
+}

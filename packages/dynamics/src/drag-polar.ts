@@ -55,7 +55,6 @@ export class DragPolarEstimator {
     let sumY = 0;
     let sumXY = 0;
     let sumX2 = 0;
-    let sumY2 = 0;
 
     for (const obs of this.observations) {
       const x = obs.cl ** 2;
@@ -64,7 +63,6 @@ export class DragPolarEstimator {
       sumY += y;
       sumXY += x * y;
       sumX2 += x ** 2;
-      sumY2 += y ** 2;
     }
 
     const denom = n * sumX2 - sumX ** 2;

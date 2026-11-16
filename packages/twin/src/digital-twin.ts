@@ -1,5 +1,6 @@
 import type { FlightState } from "@flightdna/core";
 import { AnomalyDetector } from "./anomaly";
+import { FlightPhaseDetector } from "./flight-phase";
 import { HealthMonitor } from "./health";
 import { KalmanFilter } from "./kalman";
 import type { TwinConfig, TwinState } from "./types";
@@ -8,13 +9,15 @@ import type { TwinConfig, TwinState } from "./types";
  * DigitalTwin — maintains a real-time model of a single aircraft.
  *
  * Fuses ADS-B measurements with a motion model via Kalman filtering,
- * tracks health indicators, and detects behavioral anomalies.
+ * tracks health indicators, detects behavioral anomalies, and
+ * classifies the current flight phase.
  */
 export class DigitalTwin {
   private readonly config: TwinConfig;
   private readonly kalman: KalmanFilter;
   private readonly health: HealthMonitor;
   private readonly anomalyDetector: AnomalyDetector;
+  private readonly phaseDetector: FlightPhaseDetector;
   private lastState: FlightState | null = null;
   private firstTimestamp: number | null = null;
   private updateCount = 0;
@@ -32,19 +35,29 @@ export class DigitalTwin {
     this.anomalyDetector = new AnomalyDetector({
       sensitivity: config.anomalySensitivity ?? 0.5,
     });
+
+    this.phaseDetector = new FlightPhaseDetector();
   }
 
   /**
    * Feed a new flight state measurement into the twin.
    */
   update(state: FlightState): void {
+    // Reject invalid coordinates
+    if (!Number.isFinite(state.position.latitude) ||
+        !Number.isFinite(state.position.longitude) ||
+        Math.abs(state.position.latitude) > 90 ||
+        Math.abs(state.position.longitude) > 180) {
+      return;
+    }
+
     if (this.firstTimestamp === null) {
       this.firstTimestamp = state.timestamp;
     }
 
     this.updateCount++;
 
-    // Convert flight state to Kalman measurement vector
+    // Convert flight state to 6-element Kalman measurement vector
     const measurement = [
       state.position.latitude,
       state.position.longitude,
@@ -56,12 +69,14 @@ export class DigitalTwin {
 
     this.kalman.update(measurement, state.timestamp);
 
+    this.phaseDetector.update(state);
+
     if (this.config.healthMonitoring !== false) {
       this.health.update(state);
     }
 
     if (this.config.anomalyDetection !== false) {
-      this.anomalyDetector.analyze(state);
+      this.anomalyDetector.analyze(state, this.phaseDetector.getPhase());
     }
 
     this.lastState = state;
@@ -78,9 +93,19 @@ export class DigitalTwin {
     const track = ((Math.atan2(vE, vN) * 180) / Math.PI + 360) % 360;
     const verticalRate = -vD;
 
-    // Rough Mach estimate (assume speed of sound ~ 295 m/s at cruise altitude)
-    const speedOfSound = alt > 8000 ? 295 : 340 - alt * 0.004;
-    const mach = groundSpeed / speedOfSound;
+    // Speed of sound from ISA: a = sqrt(γ * R * T)
+    // Troposphere: T = 288.15 - 0.0065 * alt
+    // Stratosphere: T = 216.65
+    const gamma = 1.4;
+    const R = 287.058;
+    const isaTemp = alt <= 11000
+      ? Math.max(1, 288.15 - 0.0065 * alt)
+      : 216.65;
+    const speedOfSound = Math.sqrt(gamma * R * isaTemp);
+
+    // Use TAS if available from last raw state, otherwise groundSpeed as approximation
+    const airspeed = this.lastState?.velocity.trueAirspeed ?? groundSpeed;
+    const mach = speedOfSound > 0 ? airspeed / speedOfSound : 0;
 
     const flightHours = this.firstTimestamp
       ? (Date.now() - this.firstTimestamp) / 3_600_000
@@ -108,6 +133,7 @@ export class DigitalTwin {
       flightHours,
       updateCount: this.updateCount,
       airborne: this.lastState ? !this.lastState.onGround : false,
+      flightPhase: this.phaseDetector.getPhase(),
     };
   }
 
@@ -141,5 +167,6 @@ export class DigitalTwin {
     this.updateCount = 0;
     this.health.reset();
     this.anomalyDetector.reset();
+    this.phaseDetector.reset();
   }
 }

@@ -23,6 +23,8 @@ export class FlightDNA {
   private readonly tracked = new Map<string, FlightState>();
   private intervalId: ReturnType<typeof setInterval> | null = null;
   private running = false;
+  private tickCount = 0;
+  private readonly statsInterval = 10; // Emit stats every N ticks
 
   constructor(config: FlightDNAConfig = {}) {
     this.config = {
@@ -113,13 +115,24 @@ export class FlightDNA {
   }
 
   /**
+   * Ingest multiple flight states at once (for batch/historical analysis).
+   * Processes them in timestamp order.
+   */
+  ingestBatch(states: FlightState[]): void {
+    const sorted = [...states].sort((a, b) => a.timestamp - b.timestamp);
+    for (const state of sorted) {
+      this.ingest(state);
+    }
+  }
+
+  /**
    * Start the periodic update loop.
    */
   start(): void {
     if (this.running) return;
     this.running = true;
     this.intervalId = setInterval(() => {
-      this.tick();
+      void this.tick();
     }, this.config.updateInterval);
   }
 
@@ -159,15 +172,93 @@ export class FlightDNA {
 
   /**
    * Internal tick — called on each update interval.
-   * In a full implementation, this would poll data sources
-   * and update all tracked aircraft.
+   * Orchestrates the pipeline: fetch -> enrich -> twin update -> emit.
    */
-  private tick(): void {
-    // Placeholder for the update cycle:
-    // 1. Poll ADS-B data for all tracked aircraft
-    // 2. Enrich with weather data
-    // 3. Run dynamics model
-    // 4. Update digital twin states
-    // 5. Emit stateUpdate events
+  private async tick(): Promise<void> {
+    this.tickCount++;
+
+    try {
+      const tracked = this.getTrackedAircraft();
+
+      // 1. Fetch latest states
+      let states: FlightState[] = [];
+      if (this.config.pipeline?.fetch) {
+        states = await this.config.pipeline.fetch(tracked);
+      }
+
+      // 2. Process each state
+      for (const state of states) {
+        const icao24 = state.aircraft.icao24.toLowerCase();
+
+        // Auto-track new aircraft
+        if (this.config.autoTrack && !this.tracked.has(icao24)) {
+          if (this.tracked.size < (this.config.maxTracked ?? 5000)) {
+            await this.track(icao24);
+          }
+        }
+
+        if (!this.tracked.has(icao24)) continue;
+
+        // 3. Enrich with weather/performance data
+        let enriched = state;
+        if (this.config.pipeline?.enrich) {
+          try {
+            enriched = this.config.pipeline.enrich(state);
+          } catch {
+            // Enrichment failure is non-fatal; proceed with unenriched state
+          }
+        }
+
+        // 4. Update twin
+        if (this.config.pipeline?.updateTwin) {
+          try {
+            this.config.pipeline.updateTwin(icao24, enriched);
+          } catch {
+            // Twin update failure is non-fatal
+          }
+        }
+
+        // 5. Store and emit
+        this.tracked.set(icao24, enriched);
+        this.bus.emit("stateUpdate", enriched);
+      }
+
+      // 6. Evict inactive aircraft
+      this.evictInactive();
+    } catch (err) {
+      this.bus.emit("error", {
+        message: err instanceof Error ? err.message : String(err),
+        code: "TICK_ERROR",
+      });
+    }
+
+    // Emit periodic stats regardless of whether the tick body succeeded
+    if (this.tickCount % this.statsInterval === 0) {
+      this.bus.emit("stats", {
+        tickCount: this.tickCount,
+        trackedCount: this.tracked.size,
+        timestamp: Date.now(),
+      });
+    }
+  }
+
+  /**
+   * Evict aircraft that have not received updates within the inactivity timeout.
+   */
+  private evictInactive(): void {
+    const timeout = this.config.inactivityTimeout ?? 300_000;
+    const cutoff = Date.now() - timeout;
+
+    for (const [icao24, state] of this.tracked) {
+      if (state.source === "pending") continue; // Don't evict pending tracks
+      if (state.timestamp < cutoff) {
+        this.tracked.delete(icao24);
+        this.bus.emit("trackEnd", {
+          icao24,
+          timestamp: Date.now(),
+          reason: "timeout",
+        });
+      }
+    }
   }
 }
