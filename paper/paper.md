@@ -37,9 +37,17 @@ FlightDNA addresses this gap by providing a modular, extensible framework that b
 2. **Engineering educators** who require interactive, data-driven tools for teaching flight dynamics, aircraft performance, and systems engineering.
 3. **Independent analysts and smaller operators** who lack access to proprietary digital twin platforms but need aircraft monitoring capabilities.
 
-# Architecture
+# Software Design
 
-FlightDNA implements a data pipeline architecture with four stages:
+FlightDNA implements a data pipeline architecture with four stages. Several deliberate design trade-offs shaped the framework:
+
+**TypeScript over Python**: While the aviation research community predominantly uses Python (pyModeS, traffic, OpenAP), TypeScript enables full-stack web applications, serverless deployment, and browser-based tools — capabilities essential for real-time dashboards and interactive analysis. TypeScript's strict type system also provides compile-time safety for the complex state vectors and matrix operations in the Kalman filter.
+
+**Point-mass 3-DOF over 6-DOF**: ADS-B provides position and velocity but not attitude (pitch, roll, yaw). A 6-DOF model would require unobservable state variables, leading to an underdetermined system. The 3-DOF point-mass model matches the observability of the data source while still enabling meaningful performance reconstruction.
+
+**Extended Kalman Filter over alternatives**: An EKF with coordinated-turn model was chosen over a linear Kalman filter (which fails during turns), an Unscented Kalman Filter (higher computational cost with marginal benefit for this state dimension), or particle filters (unnecessary for the approximately Gaussian noise in ADS-B measurements).
+
+The four pipeline stages are:
 
 1. **Ingest**: ADS-B messages are decoded from Mode S format, retrieved via the OpenSky Network REST API, or streamed from local dump1090/SBS receivers over TCP. The `@flightdna/adsb` package implements CRC-24 validation using the Mode S generator polynomial (`0xFFF409`) to reject corrupted messages, Compact Position Reporting (CPR) decoding for airborne and surface positions with a 10-second time-to-live (TTL) for position pair validity, velocity extraction from airborne velocity messages (subtypes 1--4), and aircraft identification from identification messages (type codes 1--4).
 
@@ -86,7 +94,7 @@ The framework also includes two demonstration applications: a real-time dashboar
 
 # Validation
 
-FlightDNA includes a comprehensive test suite of 246 unit and integration tests covering all seven packages. Key validation results:
+FlightDNA includes a comprehensive test suite of 281 unit and integration tests covering all seven packages, executed automatically via GitHub Actions CI on Node.js 20 and 22. A reproducible validation script (`scripts/validate.ts`) generates quantitative results for all experiments described below. Key validation results:
 
 **ISA Atmosphere Model**: Temperature, pressure, and density calculations validated against ICAO Doc 7488 standard atmosphere tables at seven reference altitudes (0--20,000 m), with agreement within 0.5% for temperature and 1% for pressure and density.
 
@@ -97,6 +105,18 @@ FlightDNA includes a comprehensive test suite of 246 unit and integration tests 
 **Kalman Filter**: The extended Kalman filter with coordinated-turn motion model produces filtered trajectory estimates with lower root-mean-square position error than raw ADS-B measurements on synthetic constant-velocity trajectories.
 
 **Anomaly Detection**: Statistical anomaly detection correctly identifies injected speed deviations (>3$\sigma$), position jumps, and extreme vertical rates (>30 m/s) with zero false positives during 50-sample steady-state operation.
+
+# Research Impact Statement
+
+FlightDNA fills a gap in the open-source aviation research ecosystem. No existing open tool combines ADS-B decoding, atmospheric enrichment, flight dynamics modeling, Kalman-filtered state estimation, and fleet analytics in a single framework. Researchers currently must build custom pipelines from scratch or negotiate proprietary data access — FlightDNA eliminates this barrier.
+
+The framework has near-term significance for several active research areas: fleet-wide fuel efficiency analysis using public surveillance data, turbulence detection from ADS-B trajectory perturbations (building on work by @Sun2019), independent aircraft performance monitoring for smaller operators without access to proprietary platforms like GE Predix or Airbus Skywise, and engineering education through interactive, data-driven flight dynamics tools. The drag polar estimation capability — deriving aerodynamic efficiency from free public data — provides researchers with performance metrics that have historically required expensive manufacturer data or restricted datasets like BADA.
+
+All seven packages are published to npm under the `@flightdna` scope, enabling immediate adoption. The modular architecture allows researchers to use individual components (e.g., the ADS-B decoder or ISA model alone) without adopting the full framework.
+
+# AI Usage Disclosure
+
+Generative AI tools (Claude, Anthropic) were used as a development assistant during the implementation of FlightDNA. Specifically, AI was used for: code generation of boilerplate and repetitive patterns, drafting test cases, generating the aircraft type database from public specifications, and iterating on documentation. All AI-generated code was reviewed, tested, and validated by the author. The mathematical algorithms (Kalman filter equations, drag polar regression, ISA atmosphere model, RK4 integration, CPR decoding) were specified by the author based on published references and verified against known test vectors and standard atmosphere tables. The architectural design, algorithm selection, and all technical decisions were made by the author.
 
 # Acknowledgements
 
