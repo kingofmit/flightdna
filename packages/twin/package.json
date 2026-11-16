@@ -1,6 +1,6 @@
 {
   "name": "@flightdna/twin",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Aircraft digital twin with Kalman filter state estimation, health monitoring, and anomaly detection for FlightDNA.",
   "license": "MIT",
   "author": "Ahmed Allem",

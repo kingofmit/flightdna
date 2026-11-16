@@ -1,6 +1,6 @@
 {
   "name": "@flightdna/adsb",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "ADS-B message decoder and OpenSky Network API client for FlightDNA.",
   "license": "MIT",
   "author": "Ahmed Allem",
