@@ -17,3 +17,5 @@ export type {
   RouteStats,
   TypeBaseline,
 } from "./types";
+export { MemoryStorage, toFlightRecord, SQL_SCHEMA } from "./storage";
+export type { StorageBackend, StorageQuery, FlightRecord } from "./storage";

@@ -1,4 +1,5 @@
 import type { Position } from "@flightdna/core";
+import type { GFSClient } from "./gfs-client";
 import { ISACalculator } from "./isa";
 import type { AtmosphericConditions, WeatherState, Wind } from "./types";
 
@@ -10,10 +11,37 @@ import type { AtmosphericConditions, WeatherState, Wind } from "./types";
  */
 export class AtmosphericModel {
   private readonly isa = new ISACalculator();
+  private gfsClient: GFSClient | null = null;
   private observations = new Map<
     string,
     { conditions: WeatherState; position: Position; timestamp: number }
   >();
+
+  /**
+   * Attach a GFS client for upper-air wind data.
+   * When set, getWindAsync() will prefer GFS data over METAR extrapolation.
+   */
+  setGFSClient(client: GFSClient): void {
+    this.gfsClient = client;
+  }
+
+  /**
+   * Get wind at a position asynchronously, preferring GFS upper-air data
+   * when available, falling back to METAR-based estimation.
+   */
+  async getWindAsync(position: Position): Promise<Wind> {
+    // Try GFS first (most accurate for upper-air winds)
+    if (this.gfsClient) {
+      const gfsWind = await this.gfsClient.getWind(
+        position.latitude,
+        position.longitude,
+        position.altitude,
+      );
+      if (gfsWind) return gfsWind;
+    }
+    // Fall back to METAR-based estimation
+    return this.getWind(position);
+  }
 
   /**
    * Get atmospheric conditions at a position.

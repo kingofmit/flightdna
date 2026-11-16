@@ -9,6 +9,8 @@ export {
 export type { AircraftTypeData } from "./aircraft-db";
 export { ThrustModel } from "./thrust-model";
 export type { ThrustModelConfig, EngineType } from "./thrust-model";
+export { NoiseModel } from "./noise-model";
+export type { NoiseEstimate, NoiseSourceParams } from "./noise-model";
 export type {
   AeroCoefficients,
   DragPolar,
