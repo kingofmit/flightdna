@@ -116,7 +116,7 @@ All seven packages are published to npm under the `@flightdna` scope, enabling i
 
 # AI Usage Disclosure
 
-Generative AI tools (Claude, Anthropic) were used as a development assistant during the implementation of FlightDNA. Specifically, AI was used for: code generation of boilerplate and repetitive patterns, drafting test cases, generating the aircraft type database from public specifications, and iterating on documentation. All AI-generated code was reviewed, tested, and validated by the author. The mathematical algorithms (Kalman filter equations, drag polar regression, ISA atmosphere model, RK4 integration, CPR decoding) were specified by the author based on published references and verified against known test vectors and standard atmosphere tables. The architectural design, algorithm selection, and all technical decisions were made by the author.
+AI-powered development tools (CodeAgento and PowerAgento) were used as development assistants during the implementation of FlightDNA. Specifically, these tools were used for: code generation of boilerplate and repetitive patterns, drafting test cases, generating the aircraft type database from public specifications, and iterating on documentation. All AI-generated code was reviewed, tested, and validated by the author. The mathematical algorithms (Kalman filter equations, drag polar regression, ISA atmosphere model, RK4 integration, CPR decoding) were specified by the author based on published references and verified against known test vectors and standard atmosphere tables. The architectural design, algorithm selection, and all technical decisions were made by the author.
 
 # Acknowledgements
 
