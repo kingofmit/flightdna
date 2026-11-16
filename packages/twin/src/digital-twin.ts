@@ -3,6 +3,7 @@ import { AnomalyDetector } from "./anomaly";
 import { FlightPhaseDetector } from "./flight-phase";
 import { HealthMonitor } from "./health";
 import { KalmanFilter } from "./kalman";
+import { TurbulenceDetector } from "./turbulence";
 import type { TwinConfig, TwinState } from "./types";
 
 /**
@@ -17,8 +18,10 @@ export class DigitalTwin {
   private readonly kalman: KalmanFilter;
   private readonly health: HealthMonitor;
   private readonly anomalyDetector: AnomalyDetector;
+  private readonly turbulenceDetector: TurbulenceDetector;
   private readonly phaseDetector: FlightPhaseDetector;
   private lastState: FlightState | null = null;
+  private lastTurbulence: import("./turbulence").TurbulenceEstimate | null = null;
   private firstTimestamp: number | null = null;
   private updateCount = 0;
 
@@ -35,6 +38,8 @@ export class DigitalTwin {
     this.anomalyDetector = new AnomalyDetector({
       sensitivity: config.anomalySensitivity ?? 0.5,
     });
+
+    this.turbulenceDetector = new TurbulenceDetector();
 
     this.phaseDetector = new FlightPhaseDetector();
   }
@@ -78,6 +83,8 @@ export class DigitalTwin {
     if (this.config.anomalyDetection !== false) {
       this.anomalyDetector.analyze(state, this.phaseDetector.getPhase());
     }
+
+    this.lastTurbulence = this.turbulenceDetector.update(state);
 
     this.lastState = state;
   }
@@ -134,6 +141,7 @@ export class DigitalTwin {
       updateCount: this.updateCount,
       airborne: this.lastState ? !this.lastState.onGround : false,
       flightPhase: this.phaseDetector.getPhase(),
+      turbulence: this.lastTurbulence,
     };
   }
 
@@ -165,8 +173,10 @@ export class DigitalTwin {
     this.lastState = null;
     this.firstTimestamp = null;
     this.updateCount = 0;
+    this.lastTurbulence = null;
     this.health.reset();
     this.anomalyDetector.reset();
+    this.turbulenceDetector.reset();
     this.phaseDetector.reset();
   }
 }
