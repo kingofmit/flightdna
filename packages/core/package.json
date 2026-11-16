@@ -1,6 +1,6 @@
 {
   "name": "@flightdna/core",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "description": "Core types, event emitter, and pipeline orchestrator for FlightDNA aircraft digital twin framework.",
   "license": "MIT",
   "author": "Ahmed Allem",
