@@ -4,6 +4,8 @@ export { JSONLExporter } from "./jsonl";
 export { KMLExporter } from "./kml";
 export type { KMLExportOptions } from "./kml";
 export { FDRExporter } from "./fdr";
+export { ColumnarExporter } from "./parquet";
+export type { ColumnarFlightData } from "./parquet";
 export { FlightReporter } from "./reporter";
 export type {
   ExportConfig,

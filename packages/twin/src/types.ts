@@ -1,4 +1,5 @@
 import type { FlightState, Position, Velocity } from "@flightdna/core";
+import type { TurbulenceEstimate } from "./turbulence";
 
 /**
  * Flight phase classifications.
@@ -66,6 +67,8 @@ export interface TwinState {
   airborne: boolean;
   /** Current flight phase */
   flightPhase: FlightPhase;
+  /** Turbulence estimate, if detected */
+  turbulence?: TurbulenceEstimate | null;
 }
 
 /**
