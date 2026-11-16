@@ -35,8 +35,9 @@ export class AtmosphericModel {
 
     // Blend: apply temperature deviation to ISA
     const adjustedTemp = isaConditions.temperature + isaDeviation * 0.5;
-    const adjustedDensity =
-      isaConditions.pressure / (287.058 * adjustedTemp);
+    const adjustedDensity = adjustedTemp > 0
+      ? isaConditions.pressure / (287.058 * adjustedTemp)
+      : isaConditions.density;
 
     return {
       ...isaConditions,

@@ -89,16 +89,31 @@ export class ISACalculator {
 
   /**
    * Calculate density altitude (altitude in ISA with the same density).
+   *
+   * Uses the actual density at the given pressure altitude and OAT,
+   * then finds the ISA altitude with the same density via inverse lookup.
    */
   densityAltitude(
     pressureAltitude: number,
     outsideAirTemperature: number,
   ): number {
-    const { temperature: isaTemp } =
-      this.temperatureAndPressure(pressureAltitude);
-    // Convert OAT from Celsius to Kelvin
+    const { pressure } = this.temperatureAndPressure(pressureAltitude);
     const oatK = outsideAirTemperature + 273.15;
-    return pressureAltitude + (ISA_CONSTANTS.T0 / ISA_CONSTANTS.LAPSE_RATE) * (1 - isaTemp / oatK);
+    if (oatK <= 0) return pressureAltitude; // Guard against non-physical temperature
+    // Actual density at this pressure altitude with non-standard temperature
+    const actualDensity = pressure / (ISA_CONSTANTS.R * oatK);
+    if (actualDensity <= 0) return pressureAltitude;
+    // Find the ISA altitude that has this density (inverse lookup in troposphere)
+    // In troposphere: ρ = ρ0 * (T/T0)^(-g/(L*R) - 1)
+    // Solving for altitude given density:
+    // T = T0 * (ρ/ρ0)^(1 / (-g/(L*R) - 1))
+    // h = (T - T0) / L
+    const exponent = 1 / (-ISA_CONSTANTS.G / (ISA_CONSTANTS.LAPSE_RATE * ISA_CONSTANTS.R) - 1);
+    const densityRatio = actualDensity / ISA_CONSTANTS.RHO0;
+    if (densityRatio <= 0) return pressureAltitude;
+    const T = ISA_CONSTANTS.T0 * densityRatio ** exponent;
+    if (!Number.isFinite(T)) return pressureAltitude;
+    return (T - ISA_CONSTANTS.T0) / ISA_CONSTANTS.LAPSE_RATE;
   }
 
   /**
@@ -145,12 +160,15 @@ export class ISACalculator {
    * Calculate dynamic viscosity using Sutherland's formula.
    */
   private sutherlandViscosity(temperature: number): number {
+    if (temperature <= 0) return 0;
     const { SUTHERLAND_C, SUTHERLAND_T_REF, SUTHERLAND_MU_REF } =
       ISA_CONSTANTS;
+    const denom = temperature + SUTHERLAND_C;
+    if (denom <= 0) return 0;
     return (
       SUTHERLAND_MU_REF *
       (temperature / SUTHERLAND_T_REF) ** 1.5 *
-      ((SUTHERLAND_T_REF + SUTHERLAND_C) / (temperature + SUTHERLAND_C))
+      ((SUTHERLAND_T_REF + SUTHERLAND_C) / denom)
     );
   }
 }

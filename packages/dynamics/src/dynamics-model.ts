@@ -9,16 +9,22 @@ import type {
 const G = 9.80665; // m/s^2
 
 /**
- * 6-DOF flight dynamics model.
+ * Point-mass 3-DOF flight dynamics model.
  *
- * Computes aerodynamic forces and moments, propagates the state
- * using numerical integration, and estimates performance from
- * observed trajectory data.
+ * Computes aerodynamic forces, propagates the state using RK4
+ * numerical integration, and estimates performance from observed
+ * trajectory data. Attitude is treated as an input (not propagated).
  */
 export class FlightDynamicsModel {
   private readonly config: AircraftConfig;
 
   constructor(config: AircraftConfig) {
+    if (config.mass <= 0 || !Number.isFinite(config.mass)) {
+      throw new Error(`Invalid aircraft mass: ${config.mass}. Must be positive and finite.`);
+    }
+    if (config.wingArea <= 0 || !Number.isFinite(config.wingArea)) {
+      throw new Error(`Invalid wing area: ${config.wingArea}. Must be positive and finite.`);
+    }
     this.config = config;
   }
 
@@ -35,6 +41,10 @@ export class FlightDynamicsModel {
     airspeed: number,
     coefficients: AeroCoefficients,
   ): { lift: number; drag: number; sideForce: number } {
+    if (airspeed <= 0 || density <= 0) {
+      return { lift: 0, drag: 0, sideForce: 0 };
+    }
+
     const q = 0.5 * density * airspeed ** 2; // Dynamic pressure
     const S = this.config.wingArea;
 
@@ -59,6 +69,7 @@ export class FlightDynamicsModel {
     loadFactor: number = 1.0,
   ): number {
     const q = 0.5 * density * airspeed ** 2;
+    if (q <= 0) return 0;
     const weight = this.config.mass * G;
     return (weight * loadFactor) / (q * this.config.wingArea);
   }
@@ -129,41 +140,23 @@ export class FlightDynamicsModel {
     loadFactor: number = 1.0,
   ): number {
     const q = 0.5 * density * airspeed ** 2;
+    if (q <= 0) return 0;
     const weight = this.config.mass * G;
     return (weight * loadFactor * Math.cos(flightPathAngle)) /
       (q * this.config.wingArea);
   }
 
   /**
-   * Propagate the dynamics state forward by dt seconds using RK4 integration.
-   *
-   * @param state - Current 6-DOF state
-   * @param forces - Applied forces in body frame
-   * @param dt - Time step in seconds
-   * @returns Updated state
+   * Transform a body-frame velocity vector to NED frame using the DCM
+   * constructed from Euler angles (3-2-1 rotation sequence).
    */
-  propagate(
-    state: DynamicsState,
-    forces: ForceVector,
-    dt: number,
-  ): DynamicsState {
-    // Simplified point-mass propagation (3-DOF)
-    const [u, v, w] = state.velocity;
-    const [phi, theta, psi] = state.attitude;
+  bodyToNED(
+    velocity: [number, number, number],
+    attitude: [number, number, number],
+  ): [number, number, number] {
+    const [u, v, w] = velocity;
+    const [phi, theta, psi] = attitude;
 
-    // Acceleration in body frame
-    const ax = forces.x / state.mass - G * Math.sin(theta);
-    const ay = forces.y / state.mass + G * Math.cos(theta) * Math.sin(phi);
-    const az = forces.z / state.mass + G * Math.cos(theta) * Math.cos(phi);
-
-    // Euler integration (RK4 for production use)
-    const newVelocity: [number, number, number] = [
-      u + ax * dt,
-      v + ay * dt,
-      w + az * dt,
-    ];
-
-    // Transform body velocity to NED for position update
     const cosTheta = Math.cos(theta);
     const sinTheta = Math.sin(theta);
     const cosPsi = Math.cos(psi);
@@ -184,18 +177,130 @@ export class FlightDynamicsModel {
       sinPhi * cosTheta * v +
       cosPhi * cosTheta * w;
 
-    const newPosition: [number, number, number] = [
-      state.position[0] + vN * dt,
-      state.position[1] + vE * dt,
-      state.position[2] + vD * dt,
+    return [vN, vE, vD];
+  }
+
+  private computeDerivatives(
+    _position: [number, number, number],
+    velocity: [number, number, number],
+    attitude: [number, number, number],
+    forces: ForceVector,
+    mass: number,
+  ): { dPosition: [number, number, number]; dVelocity: [number, number, number] } {
+    const [phi, theta] = attitude;
+
+    const ax = forces.x / mass - G * Math.sin(theta);
+    const ay = forces.y / mass + G * Math.cos(theta) * Math.sin(phi);
+    const az = forces.z / mass + G * Math.cos(theta) * Math.cos(phi);
+
+    const [vN, vE, vD] = this.bodyToNED(velocity, attitude);
+
+    return {
+      dPosition: [vN, vE, vD],
+      dVelocity: [ax, ay, az],
+    };
+  }
+
+  /**
+   * Propagate the dynamics state forward by dt seconds using RK4 integration.
+   *
+   * @param state - Current state
+   * @param forces - Applied forces in body frame
+   * @param dt - Time step in seconds
+   * @returns Updated state
+   */
+  propagate(
+    state: DynamicsState,
+    forces: ForceVector,
+    dt: number,
+  ): DynamicsState {
+    const { position, velocity, attitude, mass } = state;
+
+    type Vec3 = [number, number, number];
+    const add = (a: Vec3, b: Vec3): Vec3 => [a[0] + b[0], a[1] + b[1], a[2] + b[2]];
+    const scale = (s: number, a: Vec3): Vec3 => [s * a[0], s * a[1], s * a[2]];
+
+    const k1 = this.computeDerivatives(position, velocity, attitude, forces, mass);
+
+    const k2 = this.computeDerivatives(
+      add(position, scale(dt / 2, k1.dPosition)),
+      add(velocity, scale(dt / 2, k1.dVelocity)),
+      attitude, forces, mass,
+    );
+
+    const k3 = this.computeDerivatives(
+      add(position, scale(dt / 2, k2.dPosition)),
+      add(velocity, scale(dt / 2, k2.dVelocity)),
+      attitude, forces, mass,
+    );
+
+    const k4 = this.computeDerivatives(
+      add(position, scale(dt, k3.dPosition)),
+      add(velocity, scale(dt, k3.dVelocity)),
+      attitude, forces, mass,
+    );
+
+    const combine = (a: Vec3, b: Vec3, c: Vec3, d: Vec3): Vec3 => [
+      (a[0] + 2 * b[0] + 2 * c[0] + d[0]) / 6,
+      (a[1] + 2 * b[1] + 2 * c[1] + d[1]) / 6,
+      (a[2] + 2 * b[2] + 2 * c[2] + d[2]) / 6,
     ];
+
+    const dPos = combine(k1.dPosition, k2.dPosition, k3.dPosition, k4.dPosition);
+    const dVel = combine(k1.dVelocity, k2.dVelocity, k3.dVelocity, k4.dVelocity);
 
     return {
       ...state,
-      position: newPosition,
-      velocity: newVelocity,
+      position: add(position, scale(dt, dPos)),
+      velocity: add(velocity, scale(dt, dVel)),
       time: state.time + dt,
     };
+  }
+
+  /**
+   * Compute drag coefficient with Mach-dependent wave drag correction.
+   *
+   * Below M_dd (drag divergence Mach), standard polar applies.
+   * Above M_dd, wave drag rises per Lock's formula:
+   *   CD_wave = 20 * (M - M_dd)^4
+   *
+   * @param cl - Lift coefficient
+   * @param mach - Mach number
+   * @param polar - Drag polar (subsonic)
+   * @param mdd - Drag divergence Mach (default: 0.78 for typical transport)
+   */
+  computeDragCoefficientWithMach(
+    cl: number,
+    mach: number,
+    polar: DragPolar,
+    mdd: number = 0.78,
+  ): number {
+    // Subsonic drag polar
+    let cd = polar.cd0 + polar.k * cl ** 2;
+
+    // Wave drag above drag divergence Mach
+    if (mach > mdd) {
+      const deltaM = mach - mdd;
+      cd += 20 * deltaM ** 4;
+    }
+
+    return cd;
+  }
+
+  /**
+   * Compute total drag force with Mach correction.
+   */
+  computeDragWithMach(
+    density: number,
+    airspeed: number,
+    cl: number,
+    mach: number,
+    polar: DragPolar,
+    mdd: number = 0.78,
+  ): number {
+    const cd = this.computeDragCoefficientWithMach(cl, mach, polar, mdd);
+    const q = 0.5 * density * airspeed ** 2;
+    return q * this.config.wingArea * cd;
   }
 
   /**

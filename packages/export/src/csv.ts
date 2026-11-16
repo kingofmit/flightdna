@@ -45,7 +45,7 @@ export class CSVExporter {
 
     for (const state of states) {
       const values = fields.map((field) =>
-        this.extractField(state, field),
+        this.escapeField(this.extractField(state, field), delim),
       );
       lines.push(values.join(delim));
     }
@@ -68,10 +68,22 @@ export class CSVExporter {
 
     for (const state of states) {
       const values = fields.map((field) =>
-        this.extractField(state, field),
+        this.escapeField(this.extractField(state, field), delim),
       );
       yield values.join(delim);
     }
+  }
+
+  /**
+   * Escape a CSV field value per RFC 4180.
+   * Fields containing the delimiter, double quotes, or newlines are
+   * wrapped in double quotes, with internal quotes doubled.
+   */
+  private escapeField(value: string, delimiter: string): string {
+    if (value.includes(delimiter) || value.includes('"') || value.includes('\n') || value.includes('\r')) {
+      return '"' + value.replace(/"/g, '""') + '"';
+    }
+    return value;
   }
 
   /**

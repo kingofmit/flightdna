@@ -1,6 +1,19 @@
 import type { FlightState, Position, Velocity } from "@flightdna/core";
 
 /**
+ * Flight phase classifications.
+ */
+export type FlightPhase =
+  | "ground"
+  | "takeoff"
+  | "climb"
+  | "cruise"
+  | "descent"
+  | "approach"
+  | "landing"
+  | "unknown";
+
+/**
  * Digital twin configuration.
  */
 export interface TwinConfig {
@@ -51,6 +64,8 @@ export interface TwinState {
   updateCount: number;
   /** Whether the aircraft is currently airborne */
   airborne: boolean;
+  /** Current flight phase */
+  flightPhase: FlightPhase;
 }
 
 /**
@@ -106,12 +121,12 @@ export interface Anomaly {
 
 /**
  * Kalman filter state vector.
- * [lat, lon, alt, vN, vE, vD] — 6-dimensional state
+ * [lat, lon, alt, vN, vE, vD, heading, turnRate] — 8-dimensional state
  */
 export interface KalmanState {
-  /** State vector [lat, lon, alt, vN, vE, vD] */
+  /** State vector [lat, lon, alt, vN, vE, vD, heading, turnRate] */
   x: number[];
-  /** State covariance matrix (6x6) */
+  /** State covariance matrix (8x8) */
   P: number[][];
   /** Last update timestamp */
   timestamp: number;
@@ -127,4 +142,6 @@ export interface KalmanConfig {
   positionNoise: number;
   /** Measurement noise for velocity (m/s) */
   velocityNoise: number;
+  /** Enable innovation-based adaptive noise estimation */
+  adaptiveNoise?: boolean;
 }

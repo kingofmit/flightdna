@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>FlightDNA Dashboard</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+  #sidebar { width: 320px; background: #16213e; display: flex; flex-direction: column; border-right: 1px solid #0f3460; overflow-y: auto; flex-shrink: 0; }
+  #sidebar h1 { font-size: 18px; padding: 16px; border-bottom: 1px solid #0f3460; color: #00d2ff; letter-spacing: 1px; }
+  #sidebar h1 span { color: #e0e0e0; font-weight: 300; }
+  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #0f3460; }
+  .stat { background: #1a1a2e; border-radius: 8px; padding: 10px; text-align: center; }
+  .stat .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8899aa; margin-bottom: 4px; }
+  .stat .value { font-size: 22px; font-weight: 700; color: #00d2ff; }
+  .stat .value.health { color: #00e676; }
+  .stat .value.warn { color: #ffab00; }
+  .stat .value.crit { color: #ff5252; }
+  #selected { padding: 12px 16px; border-bottom: 1px solid #0f3460; display: none; }
+  #selected h2 { font-size: 14px; color: #8899aa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
+  #selected .detail { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px solid #0f346033; }
+  #selected .detail .dk { color: #8899aa; }
+  #connection { padding: 8px 16px; font-size: 11px; color: #8899aa; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 6px; }
+  #connection .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff5252; }
+  #connection .dot.connected { background: #00e676; }
+  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
+  #map { flex: 1; min-height: 0; }
+  #table-container { height: 200px; overflow-y: auto; background: #16213e; border-top: 1px solid #0f3460; }
+  #table-container table { width: 100%; border-collapse: collapse; font-size: 12px; }
+  #table-container th { position: sticky; top: 0; background: #0f3460; padding: 6px 8px; text-align: left; font-weight: 600; color: #8899aa; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
+  #table-container td { padding: 5px 8px; border-bottom: 1px solid #1a1a2e; white-space: nowrap; }
+  #table-container tr { cursor: pointer; transition: background 0.15s; }
+  #table-container tr:hover { background: #1a1a2e; }
+  #table-container tr.active { background: #0f3460; }
+  .health-bar { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: #333; vertical-align: middle; }
+  .health-bar .fill { height: 100%; border-radius: 3px; }
+  .leaflet-container { background: #0d1b2a; }
+</style>
+</head>
+<body>
+<div id="sidebar">
+  <h1>Flight<span>DNA</span> Dashboard</h1>
+  <div id="connection"><div class="dot" id="connDot"></div><span id="connText">Connecting...</span></div>
+  <div class="stats">
+    <div class="stat"><div class="label">Aircraft</div><div class="value" id="statCount">--</div></div>
+    <div class="stat"><div class="label">Avg Health</div><div class="value health" id="statHealth">--</div></div>
+    <div class="stat"><div class="label">Anomalies</div><div class="value" id="statAnomalies">--</div></div>
+    <div class="stat"><div class="label">Last Update</div><div class="value" id="statTime" style="font-size:14px">--</div></div>
+  </div>
+  <div id="selected">
+    <h2>Selected Aircraft</h2>
+    <div id="selectedDetails"></div>
+  </div>
+</div>
+<div id="main">
+  <div id="map"></div>
+  <div id="table-container">
+    <table>
+      <thead><tr>
+        <th>ICAO24</th><th>Callsign</th><th>Alt (ft)</th><th>GS (kts)</th><th>VS (fpm)</th><th>Track</th><th>Phase</th><th>Health</th>
+      </tr></thead>
+      <tbody id="tableBody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+(function() {
+  // --- Map setup ---
+  const map = L.map('map', { zoomControl: true }).setView([50, 5], 6);
+  L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+    attribution: '&copy; OpenStreetMap &copy; CARTO',
+    maxZoom: 19
+  }).addTo(map);
+
+  const markers = {};
+  let selectedIcao = null;
+  let aircraftData = [];
+
+  function healthColor(h) {
+    if (h >= 0.8) return '#00e676';
+    if (h >= 0.5) return '#ffab00';
+    return '#ff5252';
+  }
+
+  function makeIcon(track, health) {
+    const color = healthColor(health);
+    const svg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      <g transform="rotate(${track}, 12, 12)">
+        <path d="M12 2 L16 20 L12 16 L8 20 Z" fill="${color}" stroke="#000" stroke-width="0.5" opacity="0.9"/>
+      </g>
+    </svg>`;
+    return L.divIcon({
+      html: svg,
+      iconSize: [24, 24],
+      iconAnchor: [12, 12],
+      className: ''
+    });
+  }
+
+  function updateMarkers(aircraft) {
+    const seen = new Set();
+    for (const ac of aircraft) {
+      seen.add(ac.icao24);
+      if (ac.lat === 0 && ac.lon === 0) continue;
+      if (markers[ac.icao24]) {
+        markers[ac.icao24].setLatLng([ac.lat, ac.lon]);
+        markers[ac.icao24].setIcon(makeIcon(ac.track, ac.health));
+      } else {
+        const m = L.marker([ac.lat, ac.lon], { icon: makeIcon(ac.track, ac.health) });
+        m.on('click', function() { selectAircraft(ac.icao24); });
+        m.bindTooltip(ac.callsign || ac.icao24, { permanent: false, direction: 'top', offset: [0, -12] });
+        m.addTo(map);
+        markers[ac.icao24] = m;
+      }
+    }
+    // Remove stale markers
+    for (const id of Object.keys(markers)) {
+      if (!seen.has(id)) {
+        map.removeLayer(markers[id]);
+        delete markers[id];
+      }
+    }
+  }
+
+  function updateTable(aircraft) {
+    const tbody = document.getElementById('tableBody');
+    const sorted = [...aircraft].sort((a, b) => a.icao24.localeCompare(b.icao24));
+    let html = '';
+    for (const ac of sorted) {
+      const cls = ac.icao24 === selectedIcao ? ' class="active"' : '';
+      const hc = healthColor(ac.health);
+      html += `<tr${cls} data-icao="${ac.icao24}" onclick="window._selectAc('${ac.icao24}')">
+        <td style="font-family:monospace;color:#00d2ff">${ac.icao24}</td>
+        <td>${ac.callsign || '-'}</td>
+        <td>${ac.altFt.toLocaleString()}</td>
+        <td>${ac.gsKts}</td>
+        <td style="color:${ac.vr > 100 ? '#00e676' : ac.vr < -100 ? '#ff5252' : '#e0e0e0'}">${ac.vr > 0 ? '+' : ''}${ac.vr}</td>
+        <td>${ac.track}&deg;</td>
+        <td>${ac.phase}</td>
+        <td><div class="health-bar"><div class="fill" style="width:${Math.round(ac.health*100)}%;background:${hc}"></div></div> ${Math.round(ac.health*100)}%</td>
+      </tr>`;
+    }
+    tbody.innerHTML = html;
+  }
+
+  function updateStats(aircraft) {
+    document.getElementById('statCount').textContent = aircraft.length;
+    if (aircraft.length > 0) {
+      const avg = aircraft.reduce((s, a) => s + a.health, 0) / aircraft.length;
+      const el = document.getElementById('statHealth');
+      el.textContent = Math.round(avg * 100) + '%';
+      el.className = 'value ' + (avg >= 0.8 ? 'health' : avg >= 0.5 ? 'warn' : 'crit');
+    }
+    const anomalies = aircraft.reduce((s, a) => s + a.anomalies, 0);
+    const anomEl = document.getElementById('statAnomalies');
+    anomEl.textContent = anomalies;
+    anomEl.className = 'value' + (anomalies > 0 ? ' warn' : '');
+    document.getElementById('statTime').textContent = new Date().toLocaleTimeString();
+  }
+
+  function selectAircraft(icao24) {
+    selectedIcao = icao24;
+    const ac = aircraftData.find(a => a.icao24 === icao24);
+    const panel = document.getElementById('selected');
+    if (!ac) { panel.style.display = 'none'; return; }
+    panel.style.display = 'block';
+    const details = [
+      ['ICAO24', ac.icao24],
+      ['Callsign', ac.callsign || '-'],
+      ['Type', ac.type || '-'],
+      ['Altitude', ac.altFt.toLocaleString() + ' ft'],
+      ['Ground Speed', ac.gsKts + ' kts'],
+      ['Vertical Rate', (ac.vr > 0 ? '+' : '') + ac.vr + ' fpm'],
+      ['Track', ac.track + '\u00B0'],
+      ['Mach', ac.mach],
+      ['Phase', ac.phase],
+      ['Health', Math.round(ac.health * 100) + '%'],
+      ['Anomalies', ac.anomalies],
+      ['OAT (ISA)', ac.temperature + '\u00B0C'],
+    ];
+    document.getElementById('selectedDetails').innerHTML = details
+      .map(([k, v]) => `<div class="detail"><span class="dk">${k}</span><span>${v}</span></div>`)
+      .join('');
+    // Pan map to aircraft
+    if (ac.lat !== 0 || ac.lon !== 0) {
+      map.panTo([ac.lat, ac.lon]);
+    }
+    updateTable(aircraftData);
+  }
+  window._selectAc = selectAircraft;
+
+  // --- WebSocket ---
+  let ws;
+  function connect() {
+    const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
+    ws = new WebSocket(`${proto}//${location.host}`);
+    ws.onopen = function() {
+      document.getElementById('connDot').className = 'dot connected';
+      document.getElementById('connText').textContent = 'Connected';
+    };
+    ws.onclose = function() {
+      document.getElementById('connDot').className = 'dot';
+      document.getElementById('connText').textContent = 'Disconnected - reconnecting...';
+      setTimeout(connect, 3000);
+    };
+    ws.onerror = function() { ws.close(); };
+    ws.onmessage = function(evt) {
+      const msg = JSON.parse(evt.data);
+      if (msg.type === 'update') {
+        aircraftData = msg.aircraft;
+        updateMarkers(msg.aircraft);
+        updateTable(msg.aircraft);
+        updateStats(msg.aircraft);
+        // Re-select if still tracked
+        if (selectedIcao) {
+          const still = msg.aircraft.find(a => a.icao24 === selectedIcao);
+          if (still) selectAircraft(selectedIcao);
+          else { selectedIcao = null; document.getElementById('selected').style.display = 'none'; }
+        }
+      }
+    };
+  }
+  connect();
+})();
+</script>
+</body>
+</html>

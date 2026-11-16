@@ -13,6 +13,38 @@ interface CPRPosition {
   fflag: 0 | 1; // 0 = even, 1 = odd
 }
 
+const AIRBORNE_CPR_TTL_MS = 10_000;
+
+/**
+ * NL lookup table: number of longitude zones for CPR global decoding.
+ * NL(lat) is the number of longitude zones between 1 and 59.
+ */
+function NL(lat: number): number {
+  const absLat = Math.abs(lat);
+  if (absLat === 0) return 59;
+  if (absLat >= 87) return 1;
+  // NL transition latitudes (precomputed from the NL formula)
+  const nlTable: [number, number][] = [
+    [10.47, 59], [14.82, 58], [18.19, 57], [21.03, 56], [23.55, 55],
+    [25.83, 54], [27.94, 53], [29.91, 52], [31.77, 51], [33.54, 50],
+    [35.23, 49], [36.85, 48], [38.41, 47], [39.92, 46], [41.39, 45],
+    [42.81, 44], [44.19, 43], [45.55, 42], [46.87, 41], [48.17, 40],
+    [49.44, 39], [50.69, 38], [51.92, 37], [53.13, 36], [54.33, 35],
+    [55.52, 34], [56.70, 33], [57.86, 32], [59.02, 31], [60.17, 30],
+    [61.31, 29], [62.44, 28], [63.57, 27], [64.70, 26], [65.82, 25],
+    [66.93, 24], [68.04, 23], [69.16, 22], [70.27, 21], [71.39, 20],
+    [72.51, 19], [73.64, 18], [74.78, 17], [75.93, 16], [77.10, 15],
+    [78.29, 14], [79.50, 13], [80.74, 12], [82.02, 11], [83.36, 10],
+    [84.77, 9], [86.18, 8],
+  ];
+  for (const [threshold, nl] of nlTable) {
+    if (absLat < threshold) return nl;
+  }
+  return 1;
+}
+
+const CRC_GENERATOR = 0xFFF409;
+
 /**
  * ADS-B and Mode S message decoder.
  *
@@ -29,7 +61,22 @@ export class ADSBDecoder {
    * Decode a raw hex ADS-B message string.
    */
   decode(hex: string): DecodedADSBMessage {
-    const bytes = this.hexToBytes(hex);
+    const clean = hex.replace(/\s/g, "");
+
+    if (!/^[0-9a-fA-F]+$/.test(clean)) {
+      return { type: "unknown", icao24: "000000", typeCode: 0, timestamp: Date.now(), data: {} };
+    }
+
+    if (clean.length !== 14 && clean.length !== 28) {
+      return { type: "unknown", icao24: "000000", typeCode: 0, timestamp: Date.now(), data: {} };
+    }
+
+    const bytes = this.hexToBytes(clean);
+
+    if (clean.length === 28 && !this.verifyCRC(bytes)) {
+      return { type: "unknown", icao24: "000000", typeCode: 0, timestamp: Date.now(), data: {} };
+    }
+
     const raw = this.parseRaw(hex, bytes);
     return this.decodeMessage(raw);
   }
@@ -68,6 +115,69 @@ export class ADSBDecoder {
       timestamp: raw.timestamp,
       data,
     };
+  }
+
+  /**
+   * Resolve a global CPR position for a given aircraft from the cache.
+   */
+  resolvePosition(icao24: string): { latitude: number; longitude: number } | null {
+    const cache = this.cprCache.get(icao24);
+    if (!cache?.even || !cache?.odd) return null;
+
+    const timeDiff = Math.abs(cache.even.timestamp - cache.odd.timestamp);
+    if (timeDiff > AIRBORNE_CPR_TTL_MS) return null;
+
+    const lat0 = cache.even.latCPR;
+    const lat1 = cache.odd.latCPR;
+    const lon0 = cache.even.lonCPR;
+    const lon1 = cache.odd.lonCPR;
+
+    const dLat0 = 360 / 60;
+    const dLat1 = 360 / 59;
+
+    const j = Math.floor(59 * lat0 - 60 * lat1 + 0.5);
+
+    let latEven = dLat0 * (mod(j, 60) + lat0);
+    let latOdd = dLat1 * (mod(j, 59) + lat1);
+
+    if (latEven >= 270) latEven -= 360;
+    if (latOdd >= 270) latOdd -= 360;
+
+    if (NL(latEven) !== NL(latOdd)) return null;
+
+    const fflag = cache.even.timestamp >= cache.odd.timestamp ? 0 : 1;
+    const lat = fflag === 0 ? latEven : latOdd;
+    const nlVal = NL(lat);
+    const ni = Math.max(nlVal - fflag, 1);
+    const dLon = 360 / ni;
+    const m = Math.floor(lon0 * (nlVal - 1) - lon1 * nlVal + 0.5);
+    const lonCPR = fflag === 0 ? lon0 : lon1;
+    let lon = dLon * (mod(m, ni) + lonCPR);
+
+    if (lon >= 180) lon -= 360;
+
+    return { latitude: lat, longitude: lon };
+  }
+
+  private verifyCRC(bytes: Uint8Array): boolean {
+    const msgBytes = bytes.length; // 14 bytes for 112-bit messages
+    const dataLen = msgBytes - 3;
+    let crc = 0;
+
+    for (let i = 0; i < dataLen; i++) {
+      crc ^= bytes[i] << 16;
+      for (let bit = 0; bit < 8; bit++) {
+        if (crc & 0x800000) {
+          crc = (crc << 1) ^ CRC_GENERATOR;
+        } else {
+          crc = crc << 1;
+        }
+        crc &= 0xFFFFFF;
+      }
+    }
+
+    const msgCRC = (bytes[dataLen] << 16) | (bytes[dataLen + 1] << 8) | bytes[dataLen + 2];
+    return crc === msgCRC;
   }
 
   /**
@@ -178,6 +288,8 @@ export class ADSBDecoder {
     cprLatitude: number;
     cprLongitude: number;
     fflag: 0 | 1;
+    latitude?: number;
+    longitude?: number;
   } {
     const bits = this.bytesToBitString(payload);
 
@@ -200,19 +312,42 @@ export class ADSBDecoder {
       this.cprCache.set(icao24, {});
     }
     const cache = this.cprCache.get(icao24)!;
-    const entry = { latCPR, lonCPR, fflag, timestamp: Date.now() };
+    const now = Date.now();
+    const entry = { latCPR, lonCPR, fflag, timestamp: now };
+
     if (fflag === 0) {
+      if (cache.odd && (now - cache.odd.timestamp) > AIRBORNE_CPR_TTL_MS) {
+        cache.odd = undefined;
+      }
       cache.even = entry;
     } else {
+      if (cache.even && (now - cache.even.timestamp) > AIRBORNE_CPR_TTL_MS) {
+        cache.even = undefined;
+      }
       cache.odd = entry;
     }
 
-    return {
+    const result: {
+      altitude: number | null;
+      cprLatitude: number;
+      cprLongitude: number;
+      fflag: 0 | 1;
+      latitude?: number;
+      longitude?: number;
+    } = {
       altitude,
       cprLatitude: latCPR,
       cprLongitude: lonCPR,
       fflag,
     };
+
+    const resolved = this.resolvePosition(icao24);
+    if (resolved) {
+      result.latitude = resolved.latitude;
+      result.longitude = resolved.longitude;
+    }
+
+    return result;
   }
 
   /**
@@ -316,8 +451,32 @@ export class ADSBDecoder {
       return altFeet * 0.3048;
     }
 
-    // Gillham code — return null for now (legacy encoding)
+    // Gillham code (Mode C altitude encoding) — not decoded.
+    // Q-bit=0 indicates legacy 100-foot resolution encoding used by older transponders.
+    // This affects <5% of aircraft. When encountered, altitude is unavailable.
     return null;
+  }
+
+  /**
+   * Remove stale entries from the CPR position cache.
+   * Should be called periodically when processing message streams.
+   */
+  pruneCPRCache(maxAgeMs: number = 60_000): void {
+    const cutoff = Date.now() - maxAgeMs;
+    for (const [icao24, cache] of this.cprCache) {
+      const evenStale = !cache.even || cache.even.timestamp < cutoff;
+      const oddStale = !cache.odd || cache.odd.timestamp < cutoff;
+      if (evenStale && oddStale) {
+        this.cprCache.delete(icao24);
+      }
+    }
+  }
+
+  /**
+   * Get the current size of the CPR cache (number of tracked ICAO24 addresses).
+   */
+  get cprCacheSize(): number {
+    return this.cprCache.size;
   }
 
   /**
@@ -330,4 +489,8 @@ export class ADSBDecoder {
     }
     return result;
   }
+}
+
+function mod(a: number, b: number): number {
+  return ((a % b) + b) % b;
 }

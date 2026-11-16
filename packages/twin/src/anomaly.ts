@@ -35,7 +35,7 @@ export class AnomalyDetector {
    *
    * @returns Any new anomalies detected
    */
-  analyze(state: FlightState): Anomaly[] {
+  analyze(state: FlightState, flightPhase?: string): Anomaly[] {
     this.history.push(state);
     if (this.history.length > this.maxHistory) {
       this.history.shift();
@@ -48,12 +48,14 @@ export class AnomalyDetector {
 
     if (this.stats.count < 10) return detected;
 
+    const phaseMul = this.getThresholdMultiplier(flightPhase);
+
     // Check for speed anomalies
-    const speedAnomaly = this.checkSpeedAnomaly(state);
+    const speedAnomaly = this.checkSpeedAnomaly(state, phaseMul);
     if (speedAnomaly) detected.push(speedAnomaly);
 
     // Check for altitude anomalies
-    const altAnomaly = this.checkAltitudeAnomaly(state);
+    const altAnomaly = this.checkAltitudeAnomaly(state, phaseMul);
     if (altAnomaly) detected.push(altAnomaly);
 
     // Check for vertical rate anomalies
@@ -124,15 +126,31 @@ export class AnomalyDetector {
 
   private stdDev(m2: number): number {
     if (this.stats.count < 2) return 0;
-    return Math.sqrt(m2 / (this.stats.count - 1));
+    const variance = m2 / (this.stats.count - 1);
+    if (variance < 0) return 0; // Guard against floating-point underflow
+    return Math.sqrt(variance);
   }
 
-  private checkSpeedAnomaly(state: FlightState): Anomaly | null {
+  private getThresholdMultiplier(phase?: string): number {
+    switch (phase) {
+      case "cruise": return 0.8;  // Tighter
+      case "climb":
+      case "descent": return 1.3; // Looser
+      case "takeoff":
+      case "landing":
+      case "ground": return 2.0;  // Much looser
+      default: return 1.0;
+    }
+  }
+
+  private checkSpeedAnomaly(state: FlightState, phaseMul = 1.0): Anomaly | null {
+    if (!Number.isFinite(state.velocity.groundSpeed)) return null;
+
     const std = this.stdDev(this.stats.speedM2);
-    if (std < 1) return null;
+    if (std < 1) return null; // Need sufficient variability to detect anomalies
 
     const deviation = Math.abs(state.velocity.groundSpeed - this.stats.speedMean) / std;
-    const threshold = 3.0 * (1 - this.sensitivity * 0.5);
+    const threshold = 3.0 * (1 - this.sensitivity * 0.5) * phaseMul;
 
     if (deviation > threshold) {
       return this.createAnomaly(
@@ -145,12 +163,14 @@ export class AnomalyDetector {
     return null;
   }
 
-  private checkAltitudeAnomaly(state: FlightState): Anomaly | null {
+  private checkAltitudeAnomaly(state: FlightState, phaseMul = 1.0): Anomaly | null {
+    if (!Number.isFinite(state.position.altitude)) return null;
+
     const std = this.stdDev(this.stats.altM2);
     if (std < 10) return null;
 
     const deviation = Math.abs(state.position.altitude - this.stats.altMean) / std;
-    const threshold = 3.5 * (1 - this.sensitivity * 0.5);
+    const threshold = 3.5 * (1 - this.sensitivity * 0.5) * phaseMul;
 
     if (deviation > threshold) {
       return this.createAnomaly(
@@ -164,6 +184,8 @@ export class AnomalyDetector {
   }
 
   private checkVerticalRateAnomaly(state: FlightState): Anomaly | null {
+    if (!Number.isFinite(state.velocity.verticalRate)) return null;
+
     // Extreme vertical rate (> 30 m/s ~ 6000 ft/min)
     if (Math.abs(state.velocity.verticalRate) > 30) {
       const deviation = Math.abs(state.velocity.verticalRate) / 10;
@@ -178,6 +200,7 @@ export class AnomalyDetector {
   }
 
   private checkPositionJump(state: FlightState): Anomaly | null {
+    if (!Number.isFinite(state.position.latitude) || !Number.isFinite(state.position.longitude)) return null;
     if (this.history.length < 2) return null;
 
     const prev = this.history[this.history.length - 2];
