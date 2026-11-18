@@ -1,5 +1,11 @@
 # @flightdna/adsb
 
+## 0.3.1
+
+### Patch Changes
+
+- Fix OpenSky REST API parser to handle positional array format from the /states/all endpoint, which caused all state vectors to be silently discarded
+
 ## 0.3.0
 
 ### Minor Changes
