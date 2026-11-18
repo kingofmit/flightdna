@@ -179,7 +179,7 @@ git clone https://github.com/kingofmit/flightdna.git
 cd flightdna
 pnpm install
 pnpm build
-pnpm test    # 129+ tests across 7 packages
+pnpm test    # 337 tests across 7 packages
 ```
 
 ## Citation
