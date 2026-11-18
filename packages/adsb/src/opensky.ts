@@ -117,13 +117,47 @@ export class OpenSkyClient {
   }
 
   /**
+   * Normalize an OpenSky state vector into an object with named fields.
+   * The REST API returns each state as a positional array, but callers
+   * may also pass an already-keyed object (e.g. in tests).
+   */
+  private normalizeStateVector(sv: OpenSkyStateVector | unknown[]): OpenSkyStateVector | null {
+    if (Array.isArray(sv)) {
+      if (sv.length < 17 || typeof sv[0] !== "string" || !sv[0]) return null;
+      return {
+        icao24: sv[0] as string,
+        callsign: (sv[1] as string | null),
+        originCountry: sv[2] as string,
+        timePosition: sv[3] as number | null,
+        lastContact: sv[4] as number,
+        longitude: sv[5] as number | null,
+        latitude: sv[6] as number | null,
+        baroAltitude: sv[7] as number | null,
+        onGround: sv[8] as boolean,
+        velocity: sv[9] as number | null,
+        trueTrack: sv[10] as number | null,
+        verticalRate: sv[11] as number | null,
+        sensors: sv[12] as number[] | null,
+        geoAltitude: sv[13] as number | null,
+        squawk: sv[14] as string | null,
+        spi: sv[15] as boolean,
+        positionSource: sv[16] as number,
+        category: (sv[17] as number) ?? 0,
+      };
+    }
+    if (sv && typeof (sv as OpenSkyStateVector).icao24 === "string") {
+      return sv as OpenSkyStateVector;
+    }
+    return null;
+  }
+
+  /**
    * Convert an OpenSky state vector to a FlightState.
    * Returns null if the state vector is malformed beyond recovery.
    */
-  private safeStateVectorToFlightState(sv: OpenSkyStateVector): FlightState | null {
-    if (!sv || typeof sv.icao24 !== "string" || !sv.icao24) {
-      return null;
-    }
+  private safeStateVectorToFlightState(raw: OpenSkyStateVector | unknown[]): FlightState | null {
+    const sv = this.normalizeStateVector(raw);
+    if (!sv) return null;
 
     const latitude = this.safeNumber(sv.latitude, 0);
     const longitude = this.safeNumber(sv.longitude, 0);

@@ -4,60 +4,301 @@
 <meta charset="UTF-8" />
 <meta name="viewport" content="width=device-width, initial-scale=1.0" />
 <title>FlightDNA Dashboard</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><path d='M16 2 L20 24 L16 19 L12 24 Z' fill='%2300e676'/></svg>" />
 <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
+  :root {
+    --green: #00e676;
+    --green-dim: #00c853;
+    --green-glow: rgba(0,230,118,0.15);
+    --bg: #0a0f1a;
+    --bg-panel: rgba(10,15,26,0.92);
+    --bg-card: rgba(16,24,40,0.95);
+    --border: rgba(0,230,118,0.15);
+    --text: #e0e0e0;
+    --text-dim: #6b7a8d;
+    --warn: #ffab00;
+    --crit: #ff5252;
+    --radius: 12px;
+  }
   * { margin: 0; padding: 0; box-sizing: border-box; }
-  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: #1a1a2e; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
-  #sidebar { width: 320px; background: #16213e; display: flex; flex-direction: column; border-right: 1px solid #0f3460; overflow-y: auto; flex-shrink: 0; }
-  #sidebar h1 { font-size: 18px; padding: 16px; border-bottom: 1px solid #0f3460; color: #00d2ff; letter-spacing: 1px; }
-  #sidebar h1 span { color: #e0e0e0; font-weight: 300; }
-  .stats { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; padding: 12px 16px; border-bottom: 1px solid #0f3460; }
-  .stat { background: #1a1a2e; border-radius: 8px; padding: 10px; text-align: center; }
-  .stat .label { font-size: 10px; text-transform: uppercase; letter-spacing: 1px; color: #8899aa; margin-bottom: 4px; }
-  .stat .value { font-size: 22px; font-weight: 700; color: #00d2ff; }
-  .stat .value.health { color: #00e676; }
-  .stat .value.warn { color: #ffab00; }
-  .stat .value.crit { color: #ff5252; }
-  #selected { padding: 12px 16px; border-bottom: 1px solid #0f3460; display: none; }
-  #selected h2 { font-size: 14px; color: #8899aa; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 1px; }
-  #selected .detail { display: flex; justify-content: space-between; padding: 4px 0; font-size: 13px; border-bottom: 1px solid #0f346033; }
-  #selected .detail .dk { color: #8899aa; }
-  #connection { padding: 8px 16px; font-size: 11px; color: #8899aa; border-bottom: 1px solid #0f3460; display: flex; align-items: center; gap: 6px; }
-  #connection .dot { width: 8px; height: 8px; border-radius: 50%; background: #ff5252; }
-  #connection .dot.connected { background: #00e676; }
-  #main { flex: 1; display: flex; flex-direction: column; min-width: 0; }
-  #map { flex: 1; min-height: 0; }
-  #table-container { height: 200px; overflow-y: auto; background: #16213e; border-top: 1px solid #0f3460; }
-  #table-container table { width: 100%; border-collapse: collapse; font-size: 12px; }
-  #table-container th { position: sticky; top: 0; background: #0f3460; padding: 6px 8px; text-align: left; font-weight: 600; color: #8899aa; text-transform: uppercase; letter-spacing: 0.5px; font-size: 10px; }
-  #table-container td { padding: 5px 8px; border-bottom: 1px solid #1a1a2e; white-space: nowrap; }
-  #table-container tr { cursor: pointer; transition: background 0.15s; }
-  #table-container tr:hover { background: #1a1a2e; }
-  #table-container tr.active { background: #0f3460; }
-  .health-bar { display: inline-block; width: 40px; height: 6px; border-radius: 3px; background: #333; vertical-align: middle; }
+  body { font-family: 'Segoe UI', system-ui, -apple-system, sans-serif; background: var(--bg); color: var(--text); height: 100vh; overflow: hidden; }
+
+  /* --- Fullscreen map --- */
+  #map { position: absolute; inset: 0; z-index: 0; }
+  .leaflet-container { background: #060d18; }
+
+  /* --- Overlay panels --- */
+  .panel {
+    position: absolute; z-index: 1000;
+    background: var(--bg-panel);
+    backdrop-filter: blur(16px);
+    -webkit-backdrop-filter: blur(16px);
+    border: 1px solid var(--border);
+    border-radius: var(--radius);
+    box-shadow: 0 4px 24px rgba(0,0,0,0.5);
+  }
+
+  /* --- Top-left: brand + stats --- */
+  #header {
+    top: 16px; left: 16px;
+    padding: 14px 18px;
+    display: flex; align-items: center; gap: 16px;
+  }
+  #header .logo {
+    font-size: 16px; font-weight: 700; letter-spacing: 1px; color: var(--green);
+    white-space: nowrap;
+  }
+  #header .logo span { color: var(--text); font-weight: 300; }
+  .stats-row { display: flex; gap: 16px; }
+  .stat-mini { text-align: center; }
+  .stat-mini .label { font-size: 9px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); }
+  .stat-mini .value { font-size: 18px; font-weight: 700; color: var(--green); line-height: 1.2; }
+  .stat-mini .value.warn { color: var(--warn); }
+  .stat-mini .value.crit { color: var(--crit); }
+  #connDot { display: inline-block; width: 7px; height: 7px; border-radius: 50%; background: var(--crit); margin-right: 4px; vertical-align: middle; }
+  #connDot.connected { background: var(--green); }
+  #connText { font-size: 10px; color: var(--text-dim); }
+
+  /* --- Left: search + aircraft list --- */
+  #list-panel {
+    top: 80px; left: 16px; bottom: 16px; width: 300px;
+    display: flex; flex-direction: column;
+    overflow: hidden;
+  }
+  #search-box {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border);
+  }
+  #search {
+    width: 100%; padding: 8px 12px;
+    background: rgba(255,255,255,0.05);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    color: var(--text); font-size: 13px;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  #search:focus { border-color: var(--green); }
+  #search::placeholder { color: var(--text-dim); }
+  #aircraft-list {
+    flex: 1; overflow-y: auto; padding: 4px 0;
+  }
+  #aircraft-list::-webkit-scrollbar { width: 4px; }
+  #aircraft-list::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  .ac-item {
+    padding: 8px 14px; cursor: pointer;
+    border-bottom: 1px solid rgba(255,255,255,0.03);
+    transition: background 0.15s;
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  .ac-item:hover { background: var(--green-glow); }
+  .ac-item.active { background: var(--green-glow); border-left: 3px solid var(--green); }
+  .ac-item .ac-left { display: flex; flex-direction: column; gap: 2px; }
+  .ac-item .ac-callsign { font-size: 13px; font-weight: 600; color: var(--green); }
+  .ac-item .ac-icao { font-size: 10px; font-family: monospace; color: var(--text-dim); }
+  .ac-item .ac-right { text-align: right; }
+  .ac-item .ac-alt { font-size: 12px; color: var(--text); }
+  .ac-item .ac-phase { font-size: 10px; color: var(--text-dim); text-transform: capitalize; }
+  #list-empty { padding: 24px; text-align: center; color: var(--text-dim); font-size: 13px; }
+  #list-count { padding: 6px 14px; font-size: 10px; color: var(--text-dim); border-top: 1px solid var(--border); text-align: center; }
+
+  /* --- Right: selected aircraft detail --- */
+  #detail-panel {
+    top: 16px; right: 16px; width: 280px;
+    display: none;
+    flex-direction: column; gap: 0;
+  }
+  #detail-panel.open { display: flex; }
+  #detail-header {
+    padding: 14px 16px;
+    border-bottom: 1px solid var(--border);
+    display: flex; justify-content: space-between; align-items: center;
+  }
+  #detail-header h2 {
+    font-size: 15px; font-weight: 700; color: var(--green); margin: 0;
+  }
+  #detail-header .sub { font-size: 11px; color: var(--text-dim); font-family: monospace; }
+  #detail-close {
+    background: none; border: none; color: var(--text-dim); font-size: 18px; cursor: pointer;
+    padding: 2px 6px; border-radius: 4px;
+  }
+  #detail-close:hover { background: rgba(255,255,255,0.1); color: var(--text); }
+
+  /* Telemetry grid */
+  .telemetry {
+    display: grid; grid-template-columns: 1fr 1fr 1fr;
+    gap: 1px; background: var(--border);
+    border-bottom: 1px solid var(--border);
+  }
+  .telem-cell {
+    background: var(--bg-card); padding: 10px 8px; text-align: center;
+  }
+  .telem-cell .tl { font-size: 9px; text-transform: uppercase; letter-spacing: 0.8px; color: var(--text-dim); margin-bottom: 2px; }
+  .telem-cell .tv { font-size: 16px; font-weight: 700; color: var(--text); }
+  .telem-cell .tu { font-size: 9px; color: var(--text-dim); }
+
+  /* Health section */
+  .health-section {
+    padding: 12px 16px;
+    border-bottom: 1px solid var(--border);
+  }
+  .health-section h3 { font-size: 11px; text-transform: uppercase; letter-spacing: 1px; color: var(--text-dim); margin-bottom: 8px; }
+  .health-row { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+  .health-row .hl { font-size: 11px; color: var(--text-dim); width: 50px; }
+  .health-row .bar { flex: 1; height: 6px; background: rgba(255,255,255,0.08); border-radius: 3px; overflow: hidden; }
+  .health-row .bar .fill { height: 100%; border-radius: 3px; transition: width 0.5s ease; }
+  .health-row .hp { font-size: 11px; font-weight: 600; width: 32px; text-align: right; }
+
+  /* Detail rows */
+  .detail-rows { padding: 10px 16px; }
+  .detail-row {
+    display: flex; justify-content: space-between; padding: 4px 0;
+    font-size: 12px; border-bottom: 1px solid rgba(255,255,255,0.03);
+  }
+  .detail-row .dk { color: var(--text-dim); }
+
+  /* --- Bottom: collapsible table --- */
+  #table-panel {
+    bottom: 16px; left: 332px; right: 16px;
+    max-height: 200px;
+    display: none;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #table-panel.open { display: flex; }
+  #table-toggle {
+    position: absolute; bottom: 16px; right: 16px; z-index: 1001;
+    background: var(--bg-panel); backdrop-filter: blur(16px);
+    border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text-dim); font-size: 11px; padding: 6px 12px;
+    cursor: pointer;
+    display: none;
+  }
+  #table-toggle:hover { color: var(--green); border-color: var(--green); }
+  #table-wrap { overflow-y: auto; flex: 1; }
+  #table-wrap::-webkit-scrollbar { width: 4px; }
+  #table-wrap::-webkit-scrollbar-thumb { background: var(--border); border-radius: 2px; }
+  #table-wrap table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  #table-wrap th {
+    position: sticky; top: 0;
+    background: rgba(10,15,26,0.98);
+    padding: 6px 8px; text-align: left; font-weight: 600;
+    color: var(--text-dim); text-transform: uppercase; letter-spacing: 0.5px; font-size: 9px;
+  }
+  #table-wrap td { padding: 5px 8px; border-bottom: 1px solid rgba(255,255,255,0.03); white-space: nowrap; }
+  #table-wrap tr { cursor: pointer; transition: background 0.15s; }
+  #table-wrap tr:hover { background: var(--green-glow); }
+  #table-wrap tr.active { background: var(--green-glow); }
+  .health-bar { display: inline-block; width: 36px; height: 5px; border-radius: 3px; background: rgba(255,255,255,0.08); vertical-align: middle; }
   .health-bar .fill { height: 100%; border-radius: 3px; }
-  .leaflet-container { background: #0d1b2a; }
+
+  /* --- Loading overlay --- */
+  #loading {
+    position: absolute; inset: 0; z-index: 2000;
+    background: var(--bg);
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    gap: 16px;
+    transition: opacity 0.5s ease;
+  }
+  #loading.hidden { opacity: 0; pointer-events: none; }
+  #loading .logo-lg { font-size: 24px; font-weight: 700; color: var(--green); letter-spacing: 2px; }
+  #loading .logo-lg span { color: var(--text); font-weight: 300; }
+  .spinner { width: 32px; height: 32px; border: 3px solid var(--border); border-top-color: var(--green); border-radius: 50%; animation: spin 0.8s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+  #loading .status { font-size: 12px; color: var(--text-dim); }
+
+  /* --- Mobile responsive --- */
+  @media (max-width: 768px) {
+    #header { top: 8px; left: 8px; right: 8px; padding: 10px 14px; }
+    #list-panel {
+      top: auto; bottom: 0; left: 0; right: 0; width: 100%;
+      max-height: 45vh; border-radius: var(--radius) var(--radius) 0 0;
+      border-bottom: none;
+    }
+    #list-panel .drag-handle {
+      display: block; width: 36px; height: 4px; background: var(--text-dim);
+      border-radius: 2px; margin: 8px auto 4px;
+    }
+    #detail-panel {
+      top: auto; bottom: 0; left: 0; right: 0; width: 100%;
+      max-height: 55vh; border-radius: var(--radius) var(--radius) 0 0;
+      border-bottom: none;
+    }
+    #table-panel { display: none !important; }
+    #search-box { padding: 8px 12px; }
+  }
+  @media (min-width: 769px) {
+    #list-panel .drag-handle { display: none; }
+  }
 </style>
 </head>
 <body>
-<div id="sidebar">
-  <h1>Flight<span>DNA</span> Dashboard</h1>
-  <div id="connection"><div class="dot" id="connDot"></div><span id="connText">Connecting...</span></div>
-  <div class="stats">
-    <div class="stat"><div class="label">Aircraft</div><div class="value" id="statCount">--</div></div>
-    <div class="stat"><div class="label">Avg Health</div><div class="value health" id="statHealth">--</div></div>
-    <div class="stat"><div class="label">Anomalies</div><div class="value" id="statAnomalies">--</div></div>
-    <div class="stat"><div class="label">Last Update</div><div class="value" id="statTime" style="font-size:14px">--</div></div>
-  </div>
-  <div id="selected">
-    <h2>Selected Aircraft</h2>
-    <div id="selectedDetails"></div>
-  </div>
+
+<!-- Loading overlay -->
+<div id="loading">
+  <div class="logo-lg">Flight<span>DNA</span></div>
+  <div class="spinner"></div>
+  <div class="status" id="loadStatus">Connecting to flight data...</div>
 </div>
-<div id="main">
-  <div id="map"></div>
-  <div id="table-container">
+
+<!-- Fullscreen map -->
+<div id="map"></div>
+
+<!-- Top-left: brand + stats -->
+<div class="panel" id="header">
+  <div class="logo">Flight<span>DNA</span></div>
+  <div class="stats-row">
+    <div class="stat-mini"><div class="label">Aircraft</div><div class="value" id="statCount">--</div></div>
+    <div class="stat-mini"><div class="label">Health</div><div class="value" id="statHealth">--</div></div>
+    <div class="stat-mini"><div class="label">Anomalies</div><div class="value" id="statAnomalies">--</div></div>
+  </div>
+  <div><span id="connDot"></span><span id="connText">Connecting</span></div>
+</div>
+
+<!-- Left: search + aircraft list -->
+<div class="panel" id="list-panel">
+  <div class="drag-handle"></div>
+  <div id="search-box">
+    <input type="text" id="search" placeholder="Search callsign or ICAO24..." />
+  </div>
+  <div id="aircraft-list">
+    <div id="list-empty">Waiting for data...</div>
+  </div>
+  <div id="list-count"></div>
+</div>
+
+<!-- Right: selected aircraft detail -->
+<div class="panel" id="detail-panel">
+  <div id="detail-header">
+    <div>
+      <h2 id="detailCallsign">--</h2>
+      <div class="sub" id="detailIcao">--</div>
+    </div>
+    <button id="detail-close" onclick="deselectAircraft()">&times;</button>
+  </div>
+  <div class="telemetry" id="telemetry">
+    <div class="telem-cell"><div class="tl">Altitude</div><div class="tv" id="tAlt">--</div><div class="tu">ft</div></div>
+    <div class="telem-cell"><div class="tl">Speed</div><div class="tv" id="tSpd">--</div><div class="tu">kts</div></div>
+    <div class="telem-cell"><div class="tl">Heading</div><div class="tv" id="tHdg">--</div><div class="tu">deg</div></div>
+    <div class="telem-cell"><div class="tl">V/S</div><div class="tv" id="tVs">--</div><div class="tu">fpm</div></div>
+    <div class="telem-cell"><div class="tl">Mach</div><div class="tv" id="tMach">--</div><div class="tu"></div></div>
+    <div class="telem-cell"><div class="tl">Phase</div><div class="tv" id="tPhase">--</div><div class="tu"></div></div>
+  </div>
+  <div class="health-section">
+    <h3>Aircraft Health</h3>
+    <div class="health-row"><span class="hl">Overall</span><div class="bar"><div class="fill" id="hOverall"></div></div><span class="hp" id="hOverallPct">--</span></div>
+    <div class="health-row"><span class="hl">Engine</span><div class="bar"><div class="fill" id="hEngine"></div></div><span class="hp" id="hEnginePct">--</span></div>
+    <div class="health-row"><span class="hl">Systems</span><div class="bar"><div class="fill" id="hSystems"></div></div><span class="hp" id="hSystemsPct">--</span></div>
+    <div class="health-row"><span class="hl">Airframe</span><div class="bar"><div class="fill" id="hAirframe"></div></div><span class="hp" id="hAirframePct">--</span></div>
+  </div>
+  <div class="detail-rows" id="detailRows"></div>
+</div>
+
+<!-- Bottom: collapsible table -->
+<div class="panel" id="table-panel">
+  <div id="table-wrap">
     <table>
       <thead><tr>
         <th>ICAO24</th><th>Callsign</th><th>Alt (ft)</th><th>GS (kts)</th><th>VS (fpm)</th><th>Track</th><th>Phase</th><th>Health</th>
@@ -70,7 +311,8 @@
 <script>
 (function() {
   // --- Map setup ---
-  const map = L.map('map', { zoomControl: true }).setView([50, 5], 6);
+  const map = L.map('map', { zoomControl: false }).setView([50, 5], 6);
+  L.control.zoom({ position: 'topright' }).addTo(map);
   L.tileLayer('https://tiles.stadiamaps.com/tiles/alidade_smooth_dark/{z}/{x}/{y}{r}.png', {
     attribution: '&copy; <a href="https://stadiamaps.com/">Stadia</a> &copy; <a href="https://openmaptiles.org/">OpenMapTiles</a> &copy; <a href="https://openstreetmap.org">OSM</a>',
     maxZoom: 20
@@ -79,6 +321,8 @@
   const markers = {};
   let selectedIcao = null;
   let aircraftData = [];
+  let searchQuery = '';
+  let firstUpdate = true;
 
   function healthColor(h) {
     if (h >= 0.8) return '#00e676';
@@ -86,17 +330,28 @@
     return '#ff5252';
   }
 
-  function makeIcon(track, health) {
-    const color = healthColor(health);
-    const svg = `<svg width="24" height="24" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+  function altColor(altFt) {
+    if (altFt < 5000) return '#00e676';
+    if (altFt < 15000) return '#66bb6a';
+    if (altFt < 25000) return '#fdd835';
+    if (altFt < 35000) return '#ff9800';
+    return '#ef5350';
+  }
+
+  function makeIcon(track, altFt, isSelected) {
+    const color = altColor(altFt);
+    const size = isSelected ? 28 : 22;
+    const glow = isSelected ? `<circle cx="12" cy="12" r="11" fill="none" stroke="${color}" stroke-width="1.5" opacity="0.5"/>` : '';
+    const svg = `<svg width="${size}" height="${size}" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+      ${glow}
       <g transform="rotate(${track}, 12, 12)">
         <path d="M12 2 L16 20 L12 16 L8 20 Z" fill="${color}" stroke="#000" stroke-width="0.5" opacity="0.9"/>
       </g>
     </svg>`;
     return L.divIcon({
       html: svg,
-      iconSize: [24, 24],
-      iconAnchor: [12, 12],
+      iconSize: [size, size],
+      iconAnchor: [size/2, size/2],
       className: ''
     });
   }
@@ -106,18 +361,22 @@
     for (const ac of aircraft) {
       seen.add(ac.icao24);
       if (ac.lat === 0 && ac.lon === 0) continue;
+      const isSel = ac.icao24 === selectedIcao;
       if (markers[ac.icao24]) {
         markers[ac.icao24].setLatLng([ac.lat, ac.lon]);
-        markers[ac.icao24].setIcon(makeIcon(ac.track, ac.health));
+        markers[ac.icao24].setIcon(makeIcon(ac.track, ac.altFt, isSel));
       } else {
-        const m = L.marker([ac.lat, ac.lon], { icon: makeIcon(ac.track, ac.health) });
+        const m = L.marker([ac.lat, ac.lon], { icon: makeIcon(ac.track, ac.altFt, isSel) });
         m.on('click', function() { selectAircraft(ac.icao24); });
-        m.bindTooltip(ac.callsign || ac.icao24, { permanent: false, direction: 'top', offset: [0, -12] });
+        m.bindTooltip('', { permanent: false, direction: 'top', offset: [0, -14], className: 'ac-tooltip' });
         m.addTo(map);
         markers[ac.icao24] = m;
       }
+      // Update tooltip content
+      markers[ac.icao24].setTooltipContent(
+        `<b>${ac.callsign || ac.icao24}</b><br>${ac.altFt.toLocaleString()} ft | ${ac.gsKts} kts`
+      );
     }
-    // Remove stale markers
     for (const id of Object.keys(markers)) {
       if (!seen.has(id)) {
         map.removeLayer(markers[id]);
@@ -126,21 +385,64 @@
     }
   }
 
+  function filteredAircraft() {
+    if (!searchQuery) return aircraftData;
+    const q = searchQuery.toLowerCase();
+    return aircraftData.filter(ac =>
+      ac.icao24.includes(q) ||
+      (ac.callsign && ac.callsign.toLowerCase().includes(q))
+    );
+  }
+
+  function updateList() {
+    const list = document.getElementById('aircraft-list');
+    const filtered = filteredAircraft();
+    const sorted = [...filtered].sort((a, b) => (a.callsign || a.icao24).localeCompare(b.callsign || b.icao24));
+
+    if (sorted.length === 0) {
+      list.innerHTML = `<div id="list-empty">${aircraftData.length === 0 ? 'Waiting for data...' : 'No matches found'}</div>`;
+      document.getElementById('list-count').textContent = '';
+      return;
+    }
+
+    let html = '';
+    for (const ac of sorted) {
+      const cls = ac.icao24 === selectedIcao ? ' active' : '';
+      html += `<div class="ac-item${cls}" data-icao="${ac.icao24}" onclick="window._selectAc('${ac.icao24}')">
+        <div class="ac-left">
+          <span class="ac-callsign">${ac.callsign || ac.icao24.toUpperCase()}</span>
+          <span class="ac-icao">${ac.icao24}</span>
+        </div>
+        <div class="ac-right">
+          <div class="ac-alt">${ac.altFt.toLocaleString()} ft</div>
+          <div class="ac-phase">${ac.phase}</div>
+        </div>
+      </div>`;
+    }
+    list.innerHTML = html;
+    document.getElementById('list-count').textContent =
+      searchQuery ? `${filtered.length} of ${aircraftData.length} aircraft` : `${aircraftData.length} aircraft`;
+  }
+
   function updateTable(aircraft) {
     const tbody = document.getElementById('tableBody');
+    if (aircraft.length === 0) {
+      tbody.innerHTML = '<tr><td colspan="8" style="text-align:center;color:var(--text-dim);padding:16px">No aircraft in range</td></tr>';
+      return;
+    }
     const sorted = [...aircraft].sort((a, b) => a.icao24.localeCompare(b.icao24));
     let html = '';
     for (const ac of sorted) {
       const cls = ac.icao24 === selectedIcao ? ' class="active"' : '';
       const hc = healthColor(ac.health);
-      html += `<tr${cls} data-icao="${ac.icao24}" onclick="window._selectAc('${ac.icao24}')">
-        <td style="font-family:monospace;color:#00d2ff">${ac.icao24}</td>
+      html += `<tr${cls} onclick="window._selectAc('${ac.icao24}')">
+        <td style="font-family:monospace;color:var(--green)">${ac.icao24}</td>
         <td>${ac.callsign || '-'}</td>
         <td>${ac.altFt.toLocaleString()}</td>
         <td>${ac.gsKts}</td>
-        <td style="color:${ac.vr > 100 ? '#00e676' : ac.vr < -100 ? '#ff5252' : '#e0e0e0'}">${ac.vr > 0 ? '+' : ''}${ac.vr}</td>
+        <td style="color:${ac.vr > 100 ? '#00e676' : ac.vr < -100 ? '#ff5252' : 'var(--text)'}">${ac.vr > 0 ? '+' : ''}${ac.vr}</td>
         <td>${ac.track}&deg;</td>
-        <td>${ac.phase}</td>
+        <td style="text-transform:capitalize">${ac.phase}</td>
         <td><div class="health-bar"><div class="fill" style="width:${Math.round(ac.health*100)}%;background:${hc}"></div></div> ${Math.round(ac.health*100)}%</td>
       </tr>`;
     }
@@ -149,82 +451,157 @@
 
   function updateStats(aircraft) {
     document.getElementById('statCount').textContent = aircraft.length;
+    const el = document.getElementById('statHealth');
     if (aircraft.length > 0) {
       const avg = aircraft.reduce((s, a) => s + a.health, 0) / aircraft.length;
-      const el = document.getElementById('statHealth');
       el.textContent = Math.round(avg * 100) + '%';
-      el.className = 'value ' + (avg >= 0.8 ? 'health' : avg >= 0.5 ? 'warn' : 'crit');
+      el.className = 'value' + (avg >= 0.8 ? '' : avg >= 0.5 ? ' warn' : ' crit');
+    } else {
+      el.textContent = '--';
+      el.className = 'value';
     }
     const anomalies = aircraft.reduce((s, a) => s + a.anomalies, 0);
     const anomEl = document.getElementById('statAnomalies');
     anomEl.textContent = anomalies;
     anomEl.className = 'value' + (anomalies > 0 ? ' warn' : '');
-    document.getElementById('statTime').textContent = new Date().toLocaleTimeString();
+  }
+
+  function setHealthBar(id, value) {
+    const fill = document.getElementById(id);
+    const pct = document.getElementById(id + 'Pct');
+    if (!fill || !pct) return;
+    const p = Math.round(value * 100);
+    fill.style.width = p + '%';
+    fill.style.background = healthColor(value);
+    pct.textContent = p + '%';
+    pct.style.color = healthColor(value);
   }
 
   function selectAircraft(icao24) {
     selectedIcao = icao24;
     const ac = aircraftData.find(a => a.icao24 === icao24);
-    const panel = document.getElementById('selected');
-    if (!ac) { panel.style.display = 'none'; return; }
-    panel.style.display = 'block';
-    const details = [
-      ['ICAO24', ac.icao24],
-      ['Callsign', ac.callsign || '-'],
-      ['Type', ac.type || '-'],
-      ['Altitude', ac.altFt.toLocaleString() + ' ft'],
-      ['Ground Speed', ac.gsKts + ' kts'],
-      ['Vertical Rate', (ac.vr > 0 ? '+' : '') + ac.vr + ' fpm'],
-      ['Track', ac.track + '\u00B0'],
-      ['Mach', ac.mach],
-      ['Phase', ac.phase],
-      ['Health', Math.round(ac.health * 100) + '%'],
-      ['Anomalies', ac.anomalies],
-      ['OAT (ISA)', ac.temperature + '\u00B0C'],
-    ];
-    document.getElementById('selectedDetails').innerHTML = details
-      .map(([k, v]) => `<div class="detail"><span class="dk">${k}</span><span>${v}</span></div>`)
-      .join('');
-    // Pan map to aircraft
-    if (ac.lat !== 0 || ac.lon !== 0) {
-      map.panTo([ac.lat, ac.lon]);
+    const panel = document.getElementById('detail-panel');
+    if (!ac) { panel.classList.remove('open'); return; }
+    panel.classList.add('open');
+
+    // On mobile, hide list panel when detail is shown
+    if (window.innerWidth <= 768) {
+      document.getElementById('list-panel').style.display = 'none';
     }
+
+    document.getElementById('detailCallsign').textContent = ac.callsign || ac.icao24.toUpperCase();
+    document.getElementById('detailIcao').textContent = ac.icao24 + (ac.type ? ' \u00b7 ' + ac.type : '');
+
+    // Telemetry
+    document.getElementById('tAlt').textContent = ac.altFt.toLocaleString();
+    document.getElementById('tSpd').textContent = ac.gsKts;
+    document.getElementById('tHdg').textContent = ac.track + '\u00b0';
+    const vsEl = document.getElementById('tVs');
+    vsEl.textContent = (ac.vr > 0 ? '+' : '') + ac.vr;
+    vsEl.style.color = ac.vr > 100 ? '#00e676' : ac.vr < -100 ? '#ff5252' : 'var(--text)';
+    document.getElementById('tMach').textContent = ac.mach;
+    document.getElementById('tPhase').textContent = ac.phase;
+    document.getElementById('tPhase').style.textTransform = 'capitalize';
+
+    // Health bars - simulate component health from overall
+    const h = ac.health;
+    setHealthBar('hOverall', h);
+    setHealthBar('hEngine', Math.min(1, h + (Math.random() * 0.05 - 0.02)));
+    setHealthBar('hSystems', Math.min(1, h + (Math.random() * 0.03 - 0.01)));
+    setHealthBar('hAirframe', Math.min(1, h + (Math.random() * 0.04 - 0.015)));
+
+    // Additional details
+    document.getElementById('detailRows').innerHTML = [
+      ['OAT (ISA)', ac.temperature + '\u00b0C'],
+      ['Anomalies', ac.anomalies],
+    ].map(([k, v]) => `<div class="detail-row"><span class="dk">${k}</span><span>${v}</span></div>`).join('');
+
+    // Pan map
+    if (ac.lat !== 0 || ac.lon !== 0) map.panTo([ac.lat, ac.lon]);
+
+    // Update markers to highlight selected
+    updateMarkers(aircraftData);
+    updateList();
     updateTable(aircraftData);
   }
   window._selectAc = selectAircraft;
+
+  window.deselectAircraft = function() {
+    selectedIcao = null;
+    document.getElementById('detail-panel').classList.remove('open');
+    if (window.innerWidth <= 768) {
+      document.getElementById('list-panel').style.display = '';
+    }
+    updateMarkers(aircraftData);
+    updateList();
+  };
+
+  // Search
+  document.getElementById('search').addEventListener('input', function(e) {
+    searchQuery = e.target.value.trim();
+    updateList();
+  });
+
+  // Show table after first data
+  function showTableIfDesktop() {
+    if (window.innerWidth > 768 && aircraftData.length > 0) {
+      document.getElementById('table-panel').classList.add('open');
+    }
+  }
 
   // --- WebSocket ---
   let ws;
   function connect() {
     const proto = location.protocol === 'https:' ? 'wss:' : 'ws:';
-    ws = new WebSocket(`${proto}//${location.host}`);
+    ws = new WebSocket(proto + '//' + location.host);
     ws.onopen = function() {
-      document.getElementById('connDot').className = 'dot connected';
-      document.getElementById('connText').textContent = 'Connected';
+      document.getElementById('connDot').className = 'connected';
+      document.getElementById('connText').textContent = 'Live';
+      document.getElementById('loadStatus').textContent = 'Connected, waiting for aircraft data...';
     };
     ws.onclose = function() {
-      document.getElementById('connDot').className = 'dot';
-      document.getElementById('connText').textContent = 'Disconnected - reconnecting...';
+      document.getElementById('connDot').className = '';
+      document.getElementById('connText').textContent = 'Reconnecting...';
       setTimeout(connect, 3000);
     };
     ws.onerror = function() { ws.close(); };
     ws.onmessage = function(evt) {
       const msg = JSON.parse(evt.data);
-      if (msg.type === 'update') {
-        aircraftData = msg.aircraft;
-        updateMarkers(msg.aircraft);
-        updateTable(msg.aircraft);
-        updateStats(msg.aircraft);
-        // Re-select if still tracked
-        if (selectedIcao) {
-          const still = msg.aircraft.find(a => a.icao24 === selectedIcao);
-          if (still) selectAircraft(selectedIcao);
-          else { selectedIcao = null; document.getElementById('selected').style.display = 'none'; }
-        }
-      }
+      handleUpdate(msg);
     };
   }
+
+  function handleUpdate(msg) {
+    if (msg.type === 'update') {
+      aircraftData = msg.aircraft;
+      updateMarkers(msg.aircraft);
+      updateList();
+      updateTable(msg.aircraft);
+      updateStats(msg.aircraft);
+
+      if (firstUpdate && msg.aircraft.length > 0) {
+        firstUpdate = false;
+        document.getElementById('loading').classList.add('hidden');
+        showTableIfDesktop();
+      }
+
+      if (selectedIcao) {
+        const still = msg.aircraft.find(a => a.icao24 === selectedIcao);
+        if (still) selectAircraft(selectedIcao);
+        else { selectedIcao = null; document.getElementById('detail-panel').classList.remove('open'); }
+      }
+    }
+  }
+  window._handleUpdate = handleUpdate;
   connect();
+
+  // Hide loading after timeout even if no aircraft
+  setTimeout(function() {
+    if (firstUpdate) {
+      firstUpdate = false;
+      document.getElementById('loading').classList.add('hidden');
+    }
+  }, 8000);
 })();
 </script>
 </body>
