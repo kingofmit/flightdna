@@ -6,7 +6,7 @@
 
 **Open framework for aircraft digital twins using public ADS-B surveillance data.**
 
-[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24243285.svg)](https://doi.org/10.5281/zenodo.24243285)
+[![DOI](https://zenodo.org/badge/DOI/10.5281/zenodo.24243284.svg)](https://doi.org/10.5281/zenodo.24243284)
 [![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-blue.svg)](https://www.typescriptlang.org/)
 [![Node.js](https://img.shields.io/badge/Node.js-%3E%3D20-brightgreen.svg)](https://nodejs.org/)
