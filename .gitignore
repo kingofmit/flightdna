@@ -35,7 +35,12 @@ Thumbs.db
 npm-debug.log*
 pnpm-debug.log*
 
-.codeagento
+.codeagento/
+.cursor/
+.aider/
+.continue/
+.copilot/
+AGENTS.md
 
 # TypeDoc
 docs/
